@@ -1,0 +1,23 @@
+[package]
+name = "parser"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.80"
+ariadne = "0.4.1"
+backtrace-on-stack-overflow = "0.3.0"
+displaydoc = "*"
+logos = "0.13.0"
+thiserror = "1.0.59"
+
+[dependencies.chumsky]
+git = "https://github.com/zesterer/chumsky"
+rev = "e045b140497bd07fecbe13ae1ad22aa252678de3"
+features = ["label", "pratt"]
+
+[lints.clippy]
+nursery = "deny"
+pedantic = "deny"

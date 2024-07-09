@@ -1,0 +1,20 @@
+use x::y
+x = 5 // Comment
+enum Foo:
+    baz
+;
+if x == 4  (
+    print ("oooops!")
+
+) else (
+    print ("phew")
+)
+add: int# x, int# y; #int (
+    x + y
+)
+add (4,5).sqrt
+
+struct baz:
+    lmao# int,
+    lmao2# int
+;

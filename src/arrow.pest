@@ -1,0 +1,86 @@
+/////////////////// General rules ///////////////////   
+    
+    WHITESPACE          = _{ (" " | "\t" | NEWLINE) } 
+    COMMENT             = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ ANY*}
+    char                =  { ASCII_ALPHANUMERIC } 
+    SEPERATOR           = _{ NEWLINE | " " | "\t" | ";"} 
+    reserved_keywords   = _{ "use" | "enum" | "struct" | "if" | "else" | "return" | "int" | "string" | "bool" | "match"}
+
+/////////////////// Types ///////////////////
+
+    ident                 = { !reserved_keywords ~ (char|"_")+ | "r" ~ PUSH("#"*) ~ ( !("\"" ~ PEEK) ~ char)* ~ POP }
+    primitive_definition  = {"string" | "int" | "float" | "bool" |  "char" | "$" ~ ident | ident | "enum" ~ ident | "struct" ~ ident } 
+    array_definition      = { "[" ~ primitive_definition ~ "]" }
+    tuple_definition      = { "(" ~ primitive_definition ~ ","? ~ primitive_definition* ~ ")" }
+    bool                  = { "true" | "false" }
+    string                = !{ "\"" ~ ((    ESCAPE_SEQUENCE | UNICODE | !("\"" | "\\") ~ ANY)*) ~ "\""| "r" ~ PUSH("#"*) ~ "\"" ~ ( !("\"" ~ PEEK) ~ char)* ~ "\"" ~ POP}
+    ESCAPE_SEQUENCE       = { "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t" | "u" ~ ASCII_HEX_DIGIT{4}) }
+    UNICODE               = _{ "\\u" ~ ASCII_HEX_DIGIT{4} }
+    int                   = @{ "-"? ~ ASCII_DIGIT+}
+    scientific            = @{ int ~ ("e" | "E") ~ int}
+    float                 = @{ ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+}
+    value                 = ${ bool | string | number}
+    number                = @{ int | float | scientific | ident}
+
+/////////////////// statement ///////////////////
+    
+    statement               = ${ (assignment | match | for_loop | loop | use | fn_definition | definition)}
+        assignment          = !{ ident ~ "=" ~ expression }
+        use                 = !{ "use" ~ ident ~ ("::" ~ ident)+}
+        match               = !{ "match" ~ ident ~ ":" ~ (variant ~ "->" ~ expression ~ ",")+ ~ ";" }
+        for_loop            = !{ "for" ~ ident ~ "in" ~ ident ~ block}
+        return_statement    = !{ "return" ~ expression}
+        loop                = !{ "loop" ~ block }
+        
+        definition          = _{ enum | struct}
+            ///////////////////  Enums  ///////////////////
+                enum        = { "enum" ~ ident ~ ":"  ~ ident  ~ variant* ~ ";"}
+                variant     = { "," ~ ident ~ ( "(" ~ primitive_definition ~ ")" )?}
+            
+            /////////////////// Structs ///////////////////
+                struct      = { "struct" ~ ident ~ (":"  ~ (field ~ "," )* ~ last_field)?}
+                field       = { ident ~ ":" ~ primitive_definition }
+                last_field  = { field  ~ ";" }
+
+/////////////////// expression ///////////////////
+
+    /////////////////// functions ///////////////////
+	fn_definition       = !{primitive_definition ~ ident ~ "(" ~ (fn_arg ~ ("," ~ fn_arg)*)? ~ ")" ~ block }
+	    fn_arg          = { ident ~ ":" ~ primitive_definition }
+	    call            = { ident ~ ( "(" ~ ( expression ~ ("," ~ expression)* )? ~ ")" )? }
+	    method_call     = {expression ~ "." ~ call}
+	    
+    else_clause             = { "else" ~ (if_statement | block)}
+    if_statement            = { "if" ~ bool_expr ~ block ~ else_clause }
+    expression              = { (math_expr  | bool_expr | value | block | if_statement | call | ident)}
+
+/////////////////// mathematical expressions ///////////////////
+    
+    operation = _{ addition | subtraction | multiplication | division | power | div_eq}
+        addition       = { "+" }
+        subtraction    = { "-" }
+        multiplication = { "*" }
+        division       = { "/" }
+        power          = { "^" }
+        div_eq         = { "%" }
+        math_expr      = !{ number ~ (operation ~ ( number | "(" ~ math_expr ~ ")"))* }
+
+/////////////////// bool expressions ///////////////////
+    
+    bool_operator = _{ eq | neq | gt | lt | lte | gte }
+        eq    = { "==" }
+        neq   = { "!=" }
+        gt    = { ">" }
+        lt    = { "<" }
+        gte   = { ">=" }
+        lte   = { "<=" }
+    
+    bool_extender = _{ and | or}
+        and = { "and" | "&&" }
+        or = { "or" | "||" }
+    
+    bool_expr = !{ ( math_expr | ident | value) ~ bool_operator ~ (math_expr | ident | value) ~ (bool_extender ~ bool_expr)* }
+
+block = !{ "("  ~ (statement | expression )* ~ (expression | return_statement)? ~ ")" }
+main = _{SOI  ~ Toplevel* ~ EOI}
+Toplevel = {item | (expression ~ ":3")}

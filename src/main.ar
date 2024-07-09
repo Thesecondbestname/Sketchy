@@ -1,0 +1,21 @@
+use io/print
+x = xöla
+y = 69 / (56 - 0.45)
+_ = print(Works)
+enum Foo:
+    baz
+;
+struct baz:
+    lmao#int,
+    lmao2#int
+;
+add:x#int, y#int; (x + y)
+add(4,5).sqrt
+sub = int: (x,y) => ( x - y )
+String? math_check(x) (
+  if x == 4  (
+      std::Error::TypeError
+  ) else (
+      Ok("Lukily maths still works")
+  )
+)
