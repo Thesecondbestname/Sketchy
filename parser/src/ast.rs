@@ -1,4 +1,5 @@
 use crate::convenience_types::Spanned;
+use crate::format_join;
 
 #[derive(Debug, Clone)]
 pub struct Block(pub Vec<Spanned<Item>>);
@@ -463,16 +464,6 @@ impl Number {
     pub fn from_f32(num: f32) -> Self {
         Number::Float(num.into())
     }
-}
-fn format_join<T: ToString>(
-    obj: &[(T, crate::convenience_types::Span)],
-    join: &str,
-) -> Option<String> {
-    let (first, rest) = obj.split_first()?;
-    Some(
-        rest.iter()
-            .fold(first.0.to_string(), |acc, b| acc + join + &b.0.to_string()),
-    )
 }
 #[macro_export]
 /// Takes a struct name as first argument and a closure of it's Struct

@@ -1,21 +1,41 @@
-use io/print
 x = xöla
 y = 69 / (56 - 0.45)
-_ = print(Works)
-enum Foo:
+_ = print::print(works)
+Print = use io/print
+Foo = enum:
     baz
 ;
-struct baz:
-    lmao#int,
-    lmao2#int
+Add = trait: 
+    add#int: fn#int:int;,
+    int;
+;    
+Baz = struct:
+    lmao# int,
+    lmao2# int,
 ;
-add:x#int, y#int; (x + y)
-add(4,5).sqrt
-sub = int: (x,y) => ( x - y )
-String? math_check(x) (
-  if x == 4  (
-      std::Error::TypeError
-  ) else (
-      Ok("Lukily maths still works")
-  )
+new#int: 
+    window #Window; ( 
+     a-4 *3
+)   
+draw#int: 
+    state# SnekGame, 
+    frame# Canvas, 
+    window# Window; ( 
+     a-4 *3
+)   
+// add:x, y; = 
+//     match x if 
+//         4 then "four",
+//         _ then x + y
+
+add#int: x#int, y#int; (
+    match x if
+        4 then "four",
+        _ then x + y
+    )
+// Some kinda idk  
+_ = add (4,5).sqrt
+
+_ = if x == 4 then print ("oooops!") else (
+    _ = print ("phew")
 )

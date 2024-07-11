@@ -293,7 +293,7 @@ fn test(input: &str, name: &'static str) -> anyhow::Result<()> {
     let a = colors.next();
     let parse = SketchyParser::builder()
         .input(input.trim(), name)
-        .dbg_print_input()
+        .inspect(|a| println!("{}", a))
         .lex_sketchy_programm()
         .print_errors(|span, token, input, name| {
             Report::build::<&str>(ReportKind::Error, name, 12)

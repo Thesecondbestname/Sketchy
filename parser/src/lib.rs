@@ -16,10 +16,16 @@ pub use crate::error::ParseError;
 pub const fn empty_span() -> span::Span {
     span::Span::new(0, 0)
 }
+pub fn format_join<T: ToString, S>(obj: &[(T, S)], join: &str) -> Option<String> {
+    let (first, rest) = obj.split_first()?;
+    Some(
+        rest.iter()
+            .fold(first.0.to_string(), |acc, b| acc + join + &b.0.to_string()),
+    )
+}
 pub mod convenience_types {
     use crate::{error::ParseError, span, Token};
     pub use span::Span;
-    // pub type Error<'tokens> = chumsky::extra::Err<Rich<'tokens, Token, span::Span>>;
     pub type Error<'src> = chumsky::extra::Full<ParseError, (), &'src str>;
     pub type Spanned<T> = (T, span::Span);
     pub type ParserInput<'tokens, 'src> =

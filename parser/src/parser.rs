@@ -2,6 +2,7 @@ use crate::ast::{Block, Expression, Item};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned};
 use crate::error::{errors_to_diagnostics, Diagnostic, ParseError, Pattern};
 use crate::expression::expression;
+use crate::format_join;
 use crate::item::item;
 use crate::lexer::{lex_sketchy_program, Lex, LexError};
 use crate::span::SourceId;
@@ -56,10 +57,9 @@ pub struct NotInitialized;
 pub struct Initialized(String);
 #[derive(Default, Clone, Debug)]
 pub struct Lexed(Vec<(Token, Span)>);
-
 #[derive(Default, Clone)]
 pub struct Parsed(Option<Spanned<Expression>>);
-// ---- STATES ----
+// #### STATES #####
 
 pub struct SketchyParser {
     input: String,
@@ -94,8 +94,8 @@ impl<L, P> SketchyParserBuilder<Initialized, L, P> {
             ..self
         }
     }
-    pub fn dbg_print_input(self) -> Self {
-        println!("{}", self.input.0);
+    pub fn inspect_input<T>(self, fun: fn(&String) -> T) -> Self {
+        fun(&self.input.0);
         self
     }
     pub fn lex_sketchy_programm(self) -> LexResult<P> {
@@ -120,6 +120,10 @@ impl<L, P> SketchyParserBuilder<Initialized, L, P> {
 impl<'a, P> SketchyParserBuilder<Initialized, Lexed, P> {
     pub fn dbg_print_tokens(self) -> Self {
         println!("{:#?}", self.tokens);
+        self
+    }
+    pub fn inspect_lex<T>(self, fun: fn(&Vec<Spanned<Token>>) -> T) -> Self {
+        fun(&self.tokens.0);
         self
     }
     pub fn remove_duplicate_newline(self) -> Self {
@@ -185,6 +189,10 @@ impl<'a, P> SketchyParserBuilder<Initialized, Lexed, P> {
     }
 }
 impl SketchyParserBuilder<Initialized, Lexed, Parsed> {
+    pub fn inspect_ast<T>(self, fun: fn(&Option<Spanned<Expression>>) -> T) -> Self {
+        fun(&self.parse_result.0);
+        self
+    }
     pub fn finish(self) -> SketchyParser {
         SketchyParser {
             input: self.input.0,
@@ -225,7 +233,6 @@ pub struct ParserResult(anyhow::Result<SketchyParserBuilder<Initialized, Lexed, 
 #[error("Error while Lexing")]
 pub struct LexErr(Lex, LexError, String, Box<str>);
 /// Lex result type
-#[derive(DeriveError)]
 pub struct LexResult<P>(anyhow::Result<SketchyParserBuilder<Initialized, Lexed, P>, LexErr>);
 impl<P> LexResult<P> {
     /// Takes a function of fn('span', `erronious_token`, 'src', `src_name`)
@@ -244,7 +251,10 @@ impl<P> LexResult<P> {
     }
     pub fn dbg_panic(self) -> Self {
         let x = if let Err(ref error) = self.0 {
-            error.to_string()
+            format!(
+                "Failed lexing the tokens: {}",
+                format_join(&error.0, ", ").unwrap_or_default()
+            )
         } else {
             "paniced in lex Result".to_owned()
         };
@@ -268,18 +278,6 @@ impl ParserResult {
             formater(err, &error.1, &error.2, &error.3);
         }
         self
-    }
-    pub fn dbg_print_ast(self) -> Self {
-        println!("{:?}", self.0.as_ref().map(|a| &a.parse_result.0));
-        self
-    }
-    pub fn dbg_panic(self) -> Self {
-        let x = if let Err(ref error) = self.0 {
-            error.to_string()
-        } else {
-            "paniced in parserResult".to_owned()
-        };
-        panic!("{x:?}");
     }
     pub fn into_result(
         self,

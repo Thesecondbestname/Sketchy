@@ -1,17 +1,19 @@
 [package]
-name = "arrow"
+name = "sketchy"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 clap = { version = "4.0.32", features = ["derive"] }
+clap-verbosity-flag = "2.2.0"
 log = "0.4"
 colored = "2"
 ariadne = "0.1.5"
-paris = "1.5.13"
 chumsky = "0.9.3"
 parser = { path = "parser" }
 anyhow = "1.0.86"
+terminal_size = "0.3.0"
+chrono = "0.4.38"
 
 [lints.clippy]
 pedantic = "deny"
