@@ -1,9 +1,10 @@
 use clap::{Args, Parser, Subcommand};
-use log::{debug, trace};
+use log::{debug, trace, warn};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
-use crate::logger;
+use crate::{abort, error, logger};
+pub const PROJECT_FILE: &str = "project.toml";
 
 /// Compiles, interprets, runs and manages sketchy programs!
 #[derive(Parser, Debug, Clone)]
@@ -92,41 +93,51 @@ impl File {
     }
 }
 impl Arguments {
-    pub fn find_file(&self) -> Option<std::path::PathBuf> {
+    pub fn find_file(&self) -> Result<std::path::PathBuf, bool> {
         let fs = self.get_path_and_root();
         trace!("Looking in {:#?}", &fs.1);
         search_directory(&fs.1, fs.0.as_str())
     }
 }
-fn search_directory(path: &PathBuf, file_name: &str) -> Option<std::path::PathBuf> {
-    if path.is_dir() {
-        // check if the directory has a "src" subdirectory and search it first
-        let src_path = path.join("src");
-        if src_path.is_dir() {
-            trace!(
-                "Searching in subdirectory 'src': {}",
-                src_path.as_path().as_os_str().to_string_lossy()
-            );
-            if let Some(path) = search_directory(&src_path, file_name) {
-                return Some(path);
-            }
-        }
-
-        for entry in fs::read_dir(&path).unwrap() {
-            let entry = entry.unwrap();
-            let file_path = entry.path();
-            if file_path.is_file() && file_path.file_name().unwrap() == file_name {
-                return Some(file_path);
-            }
-            if file_path.is_dir() {
-                if let Some(path) = search_directory(&file_path, file_name) {
-                    return Some(path);
-                }
-            }
+/// first searches src/ directory then the current one for a specified file.
+/// Returns a Result of a path or a bool that indicates wether it even found an initialized environment
+fn search_directory(path: &PathBuf, file_name: &str) -> Result<std::path::PathBuf, bool> {
+    let mut is_init = false;
+    if !path.is_dir() {
+        return Err(is_init);
+    }
+    // check if the directory has a "src" subdirectory and search it first
+    let src_path = path.join("src");
+    if src_path.is_dir() {
+        trace!(
+            "Searching in subdirectory 'src': {}",
+            src_path.as_path().as_os_str().to_string_lossy()
+        );
+        if src_path.is_file() {
+            trace!("Found {} in 'src/'", file_name);
+            return Ok(src_path);
         }
     }
-    debug!("Not found in {:?}", &path);
-    None
+    trace!(
+        "Searching in current directory: {}",
+        path.as_path().as_os_str().to_string_lossy()
+    );
+    if path.join(file_name).is_file() {
+        trace!("Found {} in current dir", file_name);
+        return Ok(path.join(file_name));
+    }
+    let dir = fs::read_dir(&path).unwrap();
+    for entry in dir {
+        let entry = entry.unwrap();
+        let file_path = entry.path();
+        debug!("{:?}", &file_path);
+        if file_path.is_file() && file_path.file_name().is_some_and(|s| s == PROJECT_FILE) {
+            is_init = true
+        } else if file_path.is_file() && file_path.file_name().is_some_and(|s| s == file_name) {
+            abort!("Did you mean {}? Consider moving it to a 'src/' directory or initializing a new project with 'sketchy new'", file_path.to_string_lossy());
+        }
+    }
+    Err(is_init)
 }
 
 pub fn parse_args() -> Arguments {

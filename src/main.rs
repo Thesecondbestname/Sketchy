@@ -1,8 +1,8 @@
 use ariadne::{ColorGenerator, Label, Report, ReportKind, Source};
-use log::debug;
-use log::info;
+use log::{debug, error, info};
 use std::fs::read_to_string;
 mod cli;
+mod error;
 mod logger;
 use cli::RunOptions;
 mod bootstrap;
@@ -19,11 +19,23 @@ fn main() -> anyhow::Result<()> {
     let contents;
     match &args.option {
         RunOptions::Run(file) => {
-            contents = read_to_string(args.find_file().unwrap()).unwrap();
+            if let Ok(file_name) = args.find_file() {
+                contents = read_to_string(file_name).unwrap_or_else(|_| {
+                    abort!(
+                        "Failed to open {}. Are you sure you have read permission?",
+                        file.get_name()
+                    )
+                });
+            } else {
+                abort!(
+                    "Failed to find file {} in 'src/'! Maybe try 'sketchy new'.",
+                    file.get_name()
+                );
+            };
             let mut colors = ColorGenerator::new();
             let a = colors.next();
             SketchyParser::builder()
-                .input(contents, (file.clone().get_name()).into())
+                .input(contents, Box::new(file.clone().get_name()).leak())
                 .inspect_input(|a| debug!("{:?}", a))
                 .lex_sketchy_programm()
                 .print_errors(|span, token, input, name| {

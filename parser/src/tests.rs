@@ -293,10 +293,10 @@ fn test(input: &str, name: &'static str) -> anyhow::Result<()> {
     let a = colors.next();
     let parse = SketchyParser::builder()
         .input(input.trim(), name)
-        .inspect(|a| println!("{}", a))
+        .inspect_input(|a| println!("{}", a))
         .lex_sketchy_programm()
         .print_errors(|span, token, input, name| {
-            Report::build::<&str>(ReportKind::Error, name, 12)
+            Report::build(ReportKind::Error, name, 12)
                 .with_message(format!("Error while lexing test {input}"))
                 .with_label(
                     Label::new((name, span.start - 1..span.end - 1))
@@ -313,8 +313,15 @@ fn test(input: &str, name: &'static str) -> anyhow::Result<()> {
         .print_errors(|a, _ast, inp, name| {
             a.emit(std::io::stdout(), name, inp);
         })
-        .dbg_print_ast()
         .into_result()?
+        .inspect_ast(|x| {
+            println!(
+                "{}",
+                x.as_ref()
+                    .map(|x| x.0.to_string())
+                    .unwrap_or("No ast was parsed!".to_string())
+            )
+        })
         .finish();
     println!("\n\t{}", parse.ast());
     Ok(())

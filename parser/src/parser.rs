@@ -66,17 +66,17 @@ pub struct SketchyParser {
     parse_result: Spanned<Expression>,
 }
 #[derive(Default, Debug)]
-pub struct SketchyParserBuilder<I, L, P> {
-    name: Box<str>,
+pub struct SketchyParserBuilder<'a, I, L, P> {
+    name: &'a str,
     input: I,
     tokens: L,
     parse_result: P,
 }
-impl<'i, I, L: Default, P: Default> SketchyParserBuilder<I, L, P> {
+impl<'i, I, L: Default, P: Default> SketchyParserBuilder<'i, I, L, P> {
     pub fn input(
         self,
         inp: impl Into<String>,
-        src_name: Box<str>,
+        src_name: &'i str,
     ) -> SketchyParserBuilder<Initialized, L, P> {
         SketchyParserBuilder {
             name: src_name,
@@ -86,7 +86,7 @@ impl<'i, I, L: Default, P: Default> SketchyParserBuilder<I, L, P> {
         }
     }
 }
-impl<L, P> SketchyParserBuilder<Initialized, L, P> {
+impl<'i, L, P> SketchyParserBuilder<'i, Initialized, L, P> {
     pub fn parenthesize_program(self) -> Self {
         let str = "(".to_owned() + &self.input.0 + ")";
         Self {
@@ -98,7 +98,7 @@ impl<L, P> SketchyParserBuilder<Initialized, L, P> {
         fun(&self.input.0);
         self
     }
-    pub fn lex_sketchy_programm(self) -> LexResult<P> {
+    pub fn lex_sketchy_programm(self) -> LexResult<'i, P> {
         let SketchyParserBuilder {
             name,
             input,
@@ -117,7 +117,7 @@ impl<L, P> SketchyParserBuilder<Initialized, L, P> {
         LexResult(lex)
     }
 }
-impl<'a, P> SketchyParserBuilder<Initialized, Lexed, P> {
+impl<'i, P> SketchyParserBuilder<'i, Initialized, Lexed, P> {
     pub fn dbg_print_tokens(self) -> Self {
         println!("{:#?}", self.tokens);
         self
@@ -156,7 +156,7 @@ impl<'a, P> SketchyParserBuilder<Initialized, Lexed, P> {
             ..self
         }
     }
-    pub fn parse_sketchy_programm(self) -> ParserResult {
+    pub fn parse_sketchy_programm(self) -> ParserResult<'i> {
         let input = &self.tokens.0;
         let parse = programm().parse(
             input
@@ -188,7 +188,7 @@ impl<'a, P> SketchyParserBuilder<Initialized, Lexed, P> {
         )))
     }
 }
-impl SketchyParserBuilder<Initialized, Lexed, Parsed> {
+impl<'i> SketchyParserBuilder<'i, Initialized, Lexed, Parsed> {
     pub fn inspect_ast<T>(self, fun: fn(&Option<Spanned<Expression>>) -> T) -> Self {
         fun(&self.parse_result.0);
         self
@@ -204,7 +204,8 @@ impl SketchyParserBuilder<Initialized, Lexed, Parsed> {
 }
 impl SketchyParser {
     #[must_use]
-    pub fn builder() -> SketchyParserBuilder<NotInitialized, NotInitialized, NotInitialized> {
+    pub fn builder<'i>() -> SketchyParserBuilder<'i, NotInitialized, NotInitialized, NotInitialized>
+    {
         SketchyParserBuilder::default()
     }
 }
@@ -225,20 +226,24 @@ impl SketchyParser {
 ///Parser error type
 #[derive(DeriveError, Debug, Clone)]
 #[error("Error while Parsing")]
-pub struct ParseErr(Vec<Diagnostic>, Spanned<Expression>, String, Box<str>);
+pub struct ParseErr<'i>(Vec<Diagnostic>, Spanned<Expression>, String, &'i str);
 /// Result Type of parse
-pub struct ParserResult(anyhow::Result<SketchyParserBuilder<Initialized, Lexed, Parsed>, ParseErr>);
+pub struct ParserResult<'i>(
+    anyhow::Result<SketchyParserBuilder<'i, Initialized, Lexed, Parsed>, ParseErr<'i>>,
+);
 /// Lexer error type
 #[derive(DeriveError, Debug)]
 #[error("Error while Lexing")]
-pub struct LexErr(Lex, LexError, String, Box<str>);
+pub struct LexErr<'i>(Lex, LexError, String, &'i str);
 /// Lex result type
-pub struct LexResult<P>(anyhow::Result<SketchyParserBuilder<Initialized, Lexed, P>, LexErr>);
-impl<P> LexResult<P> {
+pub struct LexResult<'i, P>(
+    anyhow::Result<SketchyParserBuilder<'i, Initialized, Lexed, P>, LexErr<'i>>,
+);
+impl<'i, P> LexResult<'i, P> {
     /// Takes a function of fn('span', `erronious_token`, 'src', `src_name`)
     pub fn print_errors(
         self,
-        formater: impl Fn(&std::ops::Range<usize>, &Token, &str, &Box<str>),
+        formater: impl Fn(&std::ops::Range<usize>, &Token, &str, &str),
     ) -> Self {
         let Err(ref errors) = self.0 else {
             return self;
@@ -262,15 +267,12 @@ impl<P> LexResult<P> {
     }
     pub fn into_result(
         self,
-    ) -> anyhow::Result<SketchyParserBuilder<Initialized, Lexed, P>, LexErr> {
+    ) -> anyhow::Result<SketchyParserBuilder<'i, Initialized, Lexed, P>, LexErr<'i>> {
         self.0
     }
 }
-impl ParserResult {
-    pub fn print_errors(
-        self,
-        formater: fn(&Diagnostic, &Spanned<Expression>, &str, &Box<str>),
-    ) -> Self {
+impl<'i> ParserResult<'i> {
+    pub fn print_errors(self, formater: fn(&Diagnostic, &Spanned<Expression>, &str, &str)) -> Self {
         let Err(ref error) = self.0 else {
             return self;
         };
@@ -281,7 +283,7 @@ impl ParserResult {
     }
     pub fn into_result(
         self,
-    ) -> anyhow::Result<SketchyParserBuilder<Initialized, Lexed, Parsed>, ParseErr> {
+    ) -> anyhow::Result<SketchyParserBuilder<'i, Initialized, Lexed, Parsed>, ParseErr<'i>> {
         self.0
     }
 }

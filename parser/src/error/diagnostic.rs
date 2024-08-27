@@ -32,7 +32,7 @@ impl Display for Level {
 }
 use core::fmt;
 
-type Label = &'static str;
+use super::Label;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Pattern {
