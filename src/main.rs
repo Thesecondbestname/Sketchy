@@ -9,7 +9,6 @@ mod bootstrap;
 use parser::{self, SketchyParser};
 
 use crate::bootstrap::create_env;
-use crate::cli::Environment;
 
 fn main() -> anyhow::Result<()> {
     let args = cli::parse_args();
@@ -64,7 +63,7 @@ fn main() -> anyhow::Result<()> {
                 .remove_duplicate_newline()
                 .parse_sketchy_programm()
                 .print_errors(|a, _ast, inp, name| {
-                    a.emit(std::io::stdout(), &name, inp);
+                    a.emit(std::io::stdout(), name, inp);
                 })
                 .into_result()?
                 .inspect_ast(|a| {

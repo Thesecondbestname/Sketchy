@@ -22,7 +22,7 @@ pub fn check_version() -> Result<String, anyhow::Error> {
         let path = env::var("PATH")?;
         let paths: Vec<PathBuf> = env::split_paths(&path).collect();
 
-        for (_i, path) in paths.iter().enumerate() {
+        for path in &paths {
             if path.join(version).exists() {
                 return Ok(version.to_string());
             }
