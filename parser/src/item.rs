@@ -52,9 +52,7 @@ where
             .map(Item::ImplBlock)
             .labelled("Struct")
             .as_context(),
-        block
-            .then_ignore(separator())
-            .map(|a| Item::TopLevelExprError(a.0)),
+        // block.then_ignore(separator()).map(|a| Item::TopLevelExprError(a.0))
     ));
     let module = name_parser()
         .map_with(|a, c| (a, c.span()))
