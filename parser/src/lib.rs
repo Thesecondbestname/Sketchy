@@ -12,6 +12,7 @@ mod util_parsers;
 pub use parser::SketchyParser;
 pub type OutputType = convenience_types::Spanned<ast::Expression>;
 pub use crate::error::ParseError;
+
 #[must_use]
 pub const fn empty_span() -> span::Span {
     span::Span::new(0, 0)

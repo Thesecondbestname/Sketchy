@@ -2,7 +2,8 @@
 use crate::ast::{BinaryOp, Block, ComparisonOp, Expression, For, If, Item, MathOp, Number, Value};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned};
 use crate::util_parsers::{
-    extra_delimited, ident_parser, name_parser, refutable_pattern, separator, type_ident_parser,
+    extra_delimited, ident_parser_fallback, name_parser, refutable_pattern, separator,
+    type_ident_parser, type_ident_parser_fallback,
 };
 use crate::Token;
 use chumsky::prelude::*;
@@ -18,15 +19,14 @@ pub fn expression<'tokens, 'src: 'tokens, T>(
 where
     T: Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Item>, Error<'tokens>> + Clone + 'tokens,
 {
-    let ident = ident_parser();
+    let ident = ident_parser_fallback();
     let delim_block = extra_delimited(stmt.repeated().collect::<Vec<_>>())
         .map(|items| Expression::Block(Block(items)))
         .labelled("Code block");
 
     // The recursive expression Part
     recursive(|expression| {
-        let struct_construction = type_ident_parser()
-            .clone()
+        let struct_construction = type_ident_parser_fallback()
             .map_with(|a, ctx| (a, ctx.span()))
             .then(
                 name_parser()

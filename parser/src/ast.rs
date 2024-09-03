@@ -3,9 +3,16 @@ use crate::format_join;
 
 #[derive(Debug, Clone)]
 pub struct Block(pub Vec<Spanned<Item>>);
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ident(pub Vec<Spanned<String>>);
 
+#[derive(Debug, Clone)]
+pub struct Impl {
+    pub(crate) impl_for: Spanned<Ident>,
+    pub(crate) impl_what: Option<Spanned<Ident>>,
+    pub(crate) fns: Vec<Spanned<FunctionDeclaration>>,
+}
 #[derive(Debug, Clone)]
 pub enum Pattern {
     Name(Name),
@@ -24,7 +31,6 @@ pub enum Name {
 
 #[derive(Debug, Clone)]
 pub enum Item {
-    //TODO: Read span here
     Function(Spanned<FunctionDeclaration>),
     Module(Spanned<Module>),
     Import(Spanned<Import>),
@@ -32,6 +38,7 @@ pub enum Item {
     Struct(Spanned<StructDeclaration>),
     Assingment(Spanned<VariableDeclaration>),
     Trait(Spanned<Trait>),
+    ImplBlock(Spanned<Impl>),
     TopLevelExprError(Expression),
 }
 
@@ -55,7 +62,7 @@ pub struct VariableDeclaration(pub Spanned<Pattern>, pub Spanned<Expression>);
 pub struct FunctionDeclaration {
     pub name: Spanned<String>,
     pub return_type: Spanned<Type>,
-    pub arguments: Vec<Spanned<(Spanned<Type>, Spanned<String>)>>,
+    pub arguments: Vec<Spanned<(Option<Spanned<Type>>, Spanned<String>)>>,
     pub body: Spanned<Expression>,
 }
 
@@ -169,7 +176,7 @@ pub enum Type {
     Bool,
     Float,
     String,
-    Array(Box<Type>, i64),
+    Array(Box<Spanned<Type>>, i64),
     Tuple(Vec<Spanned<Type>>),
     Char,
     FunctionType(
@@ -305,7 +312,7 @@ crate::impl_display!(Type, |s: &Type| {
         Type::Bool => "bool".to_owned(),
         Type::Float => "float".to_owned(),
         Type::String => "String".to_owned(),
-        Type::Array(ty, size) => format!("[{ty};{size}]"),
+        Type::Array(ty, size) => format!("[{};{size}]", ty.0),
         Type::Tuple(t) => format!("({})", format_join(t, ",").unwrap_or_default()),
         Type::Char => "char".to_owned(),
         Type::Span => "span".to_owned(),
@@ -347,10 +354,25 @@ crate::impl_display!(FunctionDeclaration, |s: &FunctionDeclaration| {
         s.name.0,
         {
             if let Some((first, x)) = s.arguments.split_first() {
-                x.iter()
-                    .fold(format!("{}: {}", first.0 .1 .0, first.0 .0 .0), |acc, a| {
-                        format!("{acc}, {}: {}", a.0 .1 .0.clone(), a.0 .0 .0.clone())
-                    })
+                x.iter().fold(
+                    format!(
+                        "{}: {}",
+                        first.0 .1 .0,
+                        first
+                            .0
+                             .0
+                            .as_ref()
+                            .map(|a| a.0.to_string())
+                            .unwrap_or_default()
+                    ),
+                    |acc, a| {
+                        format!(
+                            "{acc}, {}: {}",
+                            a.0 .1 .0.clone(),
+                            a.0 .0.as_ref().map(|a| a.0.to_string()).unwrap_or_default()
+                        )
+                    },
+                )
             } else {
                 String::new()
             }
@@ -409,6 +431,19 @@ crate::impl_display!(Item, |s: &Item| {
             )
             .unwrap_or_default()
         ),
+        Item::ImplBlock((bl, _)) => {
+            let mut message = "impl".to_string();
+            if let Some(tra) = &bl.impl_what {
+                message.push_str(format!("{} for {} ", tra.0, bl.impl_for.0).as_str());
+            } else {
+                message.push_str(format!("{} ", bl.impl_for.0).as_str());
+            }
+            message.push_str(&format!(
+                "{{{}}}",
+                format_join(&bl.fns, ";").unwrap_or_default()
+            ));
+            message
+        }
         Item::Module(mod_) => format!(
             "mod {} {{{}}}",
             mod_.0 .0 .0,

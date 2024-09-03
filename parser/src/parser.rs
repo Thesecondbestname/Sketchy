@@ -30,17 +30,12 @@ pub fn programm<'tokens, 'src: 'tokens>() -> impl Parser<
     Error<'tokens>,             // Error Type)
 > + Clone {
     block()
-        .recover_with(via_parser(
-            expression(block())
-                .then_ignore(crate::util_parsers::newline())
-                .map(|a| (Item::TopLevelExprError(a.0), a.1)),
-        ))
         .validate(|it, ctx, emmit| {
             if let Item::TopLevelExprError(_) = it.0 {
                 emmit.emit(ParseError::expected_found_help(
                     ctx.span(),
                     vec![Pattern::Label("Top level Item")],
-                    Some("expression".to_owned()),
+                    Some("Expression".to_owned()),
                     "Top Level expressions are not allowed".to_owned(),
                 ));
             }

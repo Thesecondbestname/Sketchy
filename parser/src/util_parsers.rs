@@ -1,7 +1,7 @@
 use crate::ast::{self, Ident, Name, Pattern, Type};
 use crate::convenience_types::{Error, ParserInput, Spanned};
 use crate::expression::value;
-use crate::Token;
+use crate::{ParseError, Token};
 use chumsky::prelude::*;
 
 pub fn name_parser<'tokens, 'src: 'tokens>() -> impl Parser<
@@ -12,13 +12,58 @@ pub fn name_parser<'tokens, 'src: 'tokens>() -> impl Parser<
 > + Clone {
     select! { Token::Ident(ident) => ident }.labelled("Name")
 }
-pub fn ident_parser<'tokens, 'src: 'tokens>() -> impl Parser<
+pub fn type_name_parser<'tokens, 'src: 'tokens>() -> impl Parser<
+    'tokens,
+    ParserInput<'tokens, 'src>, // Input
+    String,                     // Output
+    Error<'tokens>,             // Error Type
+> + Clone {
+    select! { Token::Ident(ident) => ident }
+        .validate(|v, ctx, emitter| {
+            if !v.chars().next().is_some_and(char::is_uppercase) {
+                emitter.emit(ParseError::expected_found_help(
+                    ctx.span(),
+                    vec![crate::error::Pattern::Label("Type name")],
+                    Some("variable name".to_owned()),
+                    "Consider making this Uppercase".to_owned(),
+                ));
+            }
+            v
+        })
+        .labelled("Name")
+}
+// pub fn ident_parser<'tokens, 'src: 'tokens>() -> impl Parser<
+//     'tokens,
+//     ParserInput<'tokens, 'src>, // Input
+//     Ident,                      // Output
+//     Error<'tokens>,             // Error Type
+// > + Clone {
+//     select! { Token::Ident(ident) if ident.chars().next().is_some_and(char::is_lowercase) => ident }
+//         .map_with(|a, ctx| (a, ctx.span()))
+//         .separated_by(just(Token::DoubleColon))
+//         .at_least(1)
+//         .collect()
+//         .map(ast::Ident)
+//         .labelled("Identifier")
+// }
+pub fn ident_parser_fallback<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
     Ident,                      // Output
     Error<'tokens>,             // Error Type
 > + Clone {
-    select! { Token::Ident(ident) if ident.chars().next().expect("[INTERNAL ERROR] erronious string parsing").is_lowercase() => ident }
+    select! { Token::Ident(ident) => ident }
+        .validate(|v, ctx, emitter| {
+            if !v.chars().next().is_some_and(char::is_lowercase) {
+                emitter.emit(ParseError::expected_found_help(
+                    ctx.span(),
+                    vec![crate::error::Pattern::Label("Identifier")],
+                    Some("Type ident".to_owned()),
+                    "Consider making this lowercase".to_owned(),
+                ));
+            }
+            v
+        })
         .map_with(|a, ctx| (a, ctx.span()))
         .separated_by(just(Token::DoubleColon))
         .at_least(1)
@@ -26,29 +71,45 @@ pub fn ident_parser<'tokens, 'src: 'tokens>() -> impl Parser<
         .map(ast::Ident)
         .labelled("Identifier")
 }
+/// ONLY USE WHEN IDENT_PARSER IS NOT VALID
+pub fn type_ident_parser_fallback<'tokens, 'src: 'tokens>() -> impl Parser<
+    'tokens,
+    ParserInput<'tokens, 'src>, // Input
+    Ident,                      // Output
+    Error<'tokens>,             // Error Type
+> + Clone {
+    select! { Token::Ident(ident) => ident }
+        .validate(|v, ctx, emitter| {
+            if !v.chars().next().is_some_and(char::is_uppercase) {
+                emitter.emit(ParseError::expected_found_help(
+                    ctx.span(),
+                    vec![crate::error::Pattern::Label("Type ident")],
+                    Some("variable Ident".to_owned()),
+                    "Consider making this uppercase".to_owned(),
+                ));
+            }
+            v
+        })
+        .map_with(|a, ctx| (a, ctx.span()))
+        .separated_by(just(Token::DoubleColon))
+        .at_least(1)
+        .collect()
+        .map(ast::Ident)
+        .labelled("Uppercase type ident")
+}
 pub fn type_ident_parser<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
     Ident,                      // Output
     Error<'tokens>,             // Error Type
 > + Clone {
-    select! { Token::Ident(ident) if ident.chars().next().is_some_and(char::is_uppercase)=> ident }
-        // Results in catastrophic parser failure
-        // .recover_with(
-        //     via_parser(
-        //         select! {Token::Ident(ident) if ident.chars().next().is_some_and(char::is_lowercase)=> ident }
-        //         .validate(|v, ctx, emitter|{
-        //             emitter.emit(ParseError::expected_found_help(ctx.span(), vec![crate::error::Pattern::Label("Type ident")], Some("variable Ident".to_owned()), "Consider making this uppercase".to_owned()));
-        //             v
-        //         })
-        //     )
-        // )
+    select! { Token::Ident(ident) if ident.chars().next().is_some_and(char::is_uppercase) => ident }
         .map_with(|a, ctx| (a, ctx.span()))
         .separated_by(just(Token::DoubleColon))
         .at_least(1)
         .collect()
         .map(ast::Ident)
-        .labelled("Type Identifier")
+        .labelled("Uppercase type ident")
 }
 pub fn separator<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
@@ -66,7 +127,7 @@ pub fn type_parser<'tokens, 'src: 'tokens>() -> impl Parser<
 > + Clone {
     let int = select! { Token::Integer(v) => v }.labelled("Whole AAh integer");
     recursive(|r#type| {
-        let path = type_ident_parser().map_with(|a, ctx| Type::Path((a, ctx.span())));
+        let path = type_ident_parser_fallback().map_with(|a, ctx| Type::Path((a, ctx.span())));
         let primitives = select! {Token::Type(x) => x,}.labelled("primitive type");
         let tuple = r#type
             .clone()
@@ -77,6 +138,8 @@ pub fn type_parser<'tokens, 'src: 'tokens>() -> impl Parser<
             .map(Type::Tuple)
             .labelled("Tuple");
         let array = r#type
+            .clone()
+            .map_with(|a, b| (a, b.span()))
             .clone()
             .then_ignore(just(Token::Comma))
             .then(int)
@@ -109,21 +172,6 @@ pub fn type_parser<'tokens, 'src: 'tokens>() -> impl Parser<
         ))
     })
     .labelled("Type")
-}
-pub fn parameter_parser<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,       // Input
-    (Spanned<String>, Spanned<Type>), // Output
-    Error<'tokens>,                   // Error Type
-> + Clone {
-    choice((
-        just(Token::Self_)
-            .map_with(|_, ctx| (("self".to_owned(), ctx.span()), (Type::Self_, ctx.span()))),
-        name_parser()
-            .map_with(|name, ctx| (name, ctx.span()))
-            .then_ignore(just(Token::Hashtag))
-            .then(type_parser().map_with(|type_, ctx| (type_, ctx.span()))),
-    ))
 }
 
 pub fn extra_delimited<'tokens, 'src: 'tokens, T, U>(
@@ -197,19 +245,21 @@ where
     let nuthing = select! { Token::Ident(ident) if ident == "_" =>
         Name::Underscore
     };
-    let name_pattern = ident_parser()
-        .map(|ident| {
+    let name_pattern = choice((
+        nuthing,
+        ident_parser_fallback().map(|ident| {
             let Ident(s) = ident;
             Name::Name(s)
-        })
-        .or(nuthing);
+        }),
+    ));
     let tuple_destructure = pattern
         .clone()
         .separated_by(just(Token::Comma))
         .collect()
         .delimited_by(just(Token::Lparen), just(Token::Rparen));
+    // DO NOT use the fallback type parser here. It consumes to eagerly
     let enum_destructure = type_ident_parser().then(tuple_destructure.clone().or_not());
-    let struct_destructure = type_ident_parser().then(
+    let struct_destructure = type_ident_parser_fallback().then(
         name_pattern
             .clone()
             .map_with(|pat, ctx| (pat, ctx.span()))

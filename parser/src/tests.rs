@@ -7,29 +7,29 @@ fn basic_lex() -> anyhow::Result<()> {
     y = 69 / (56 - 0.45)
     _ = print::print(works)
     Print = use io/print
-    Foo = enum:
+    enum Foo :
         baz
     ;
-    Add = trait: 
-        add#int: fn#int:int;,
+    trait Add: 
+        add: fn#int:int;,
         int;
     ;    
-    Baz = struct:
+    struct Baz:
         lmao# int,
         lmao2# int,
-        impl Add:
-            add#int: Self; (
-                self.lmao + self.lmao2
-            )
-        ;
+    ;
+    impl Add:
+        add#int: Self; (
+            self.lmao + self.lmao2
+        )
     ;
     new#int: 
         window #Window; ( 
          a-4 *3
     )   
     draw#int: 
-        state# SnekGame, 
-        frame# Canvas, 
+        state, 
+        frame, 
         window# Window; ( 
          a-4 *3
     )   
@@ -53,7 +53,7 @@ fn basic_lex() -> anyhow::Result<()> {
 }
 #[test]
 fn structs() -> anyhow::Result<()> {
-    let input = r"baz= struct:
+    let input = r"struct Baz:
         lmao# int,
         lmao2# int
     ;";
@@ -61,7 +61,7 @@ fn structs() -> anyhow::Result<()> {
 }
 #[test]
 fn enums() -> anyhow::Result<()> {
-    let input = r"Baz = enum:
+    let input = r"enum Baz :
         lmao,
         lmao2(int, bool)
     ;";
@@ -71,33 +71,33 @@ fn enums() -> anyhow::Result<()> {
 fn modules() -> anyhow::Result<()> {
     let input = r"
     test = mod:
-    Print = use io/print
-    Foo = enum:
-        baz
-    ;
-    Add = trait: 
-        add#int: fn#int:int;,
-        int;
-    ;    
-    Baz = struct:
-        lmao# int,
-        lmao2# int,
+        Print = use io/print
+        enum Foo:
+            baz
+        ;
+        trait Add: 
+            add#int: fn#int:int;,
+            int;
+        ;    
+        struct Baz :
+            lmao# int,
+            lmao2# int,
+        ;
         impl Add:
             add#int: Self; (
                 self.lmao + self.lmao2
             )
         ;
-    ;
-    new#int: 
-        window #Window; ( 
-         a-4 *3
-    );
+        new#int: 
+            window #Window; ( 
+             a-4 *3
+        );
 ";
     test(input, "modules")
 }
 #[test]
-fn struct_functions() -> anyhow::Result<()> {
-    let input = r"baz = struct:
+fn structs_with_impl() -> anyhow::Result<()> {
+    let input = r"struct Baz:
         lmao# int,
         lmao2# int,
     ;
@@ -109,7 +109,7 @@ fn struct_functions() -> anyhow::Result<()> {
              a-4 *3
         )   
     ;
-    impl:
+    impl Baz:
         new#int: 
             window #Window; ( 
              a-4 *3
@@ -120,7 +120,7 @@ fn struct_functions() -> anyhow::Result<()> {
 }
 #[test]
 fn function_types() -> anyhow::Result<()> {
-    let input = "Add = trait: 
+    let input = "trait Add: 
             add#int: 
                 fn#int: int,int;, 
                 int
@@ -135,7 +135,7 @@ fn method_calls() -> anyhow::Result<()> {
 }
 #[test]
 fn traits() -> anyhow::Result<()> {
-    let input = "Add = trait: add#int:int, int; ;";
+    let input = "trait Add : add#int:int, int; ;";
     test(input, "traits")
 }
 #[test]

@@ -1,11 +1,14 @@
 use crate::ast::{
-    EnumDeclaration, EnumVariantDeclaration, Expression, FunctionDeclaration, Import, Item, Module,
-    StructDeclaration, StructField, Trait, TraitFns, Type, VariableDeclaration,
+    EnumDeclaration, EnumVariantDeclaration, Expression, FunctionDeclaration, Impl, Import, Item,
+    Module, StructDeclaration, StructField, Trait, TraitFns, Type, VariableDeclaration,
 };
 use crate::convenience_parsers::{name_parser, separator, type_parser};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned};
 use crate::lexer::Token;
-use crate::util_parsers::{extra_delimited, irrefutable_pattern, newline, parameter_parser};
+use crate::util_parsers::{
+    extra_delimited, ident_parser_fallback, irrefutable_pattern, newline,
+    type_ident_parser_fallback, type_name_parser,
+};
 
 use chumsky::prelude::*;
 
@@ -18,12 +21,12 @@ where
         + 'tokens,
 {
     let declarations = choice((
+        import().map(Item::Import).labelled("Import").as_context(),
         assingment(block.clone())
             .then_ignore(newline())
             .map(Item::Assingment)
             .labelled("Assignment")
             .as_context(),
-        import().map(Item::Import).labelled("Import").as_context(),
         function_definition(block.clone())
             .then_ignore(separator())
             .map(Item::Function)
@@ -34,16 +37,24 @@ where
             .map(Item::Trait)
             .labelled("Trait")
             .as_context(),
-        enum_parser(block.clone())
+        enum_parser()
             .then_ignore(separator())
             .map(Item::Enum)
             .labelled("Enum")
             .as_context(),
-        struct_parser(block)
+        struct_parser()
             .then_ignore(separator())
             .map(Item::Struct)
             .labelled("Struct")
             .as_context(),
+        impl_parser(block.clone())
+            .then_ignore(separator())
+            .map(Item::ImplBlock)
+            .labelled("Struct")
+            .as_context(),
+        block
+            .then_ignore(separator())
+            .map(|a| Item::TopLevelExprError(a.0)),
     ));
     let module = name_parser()
         .map_with(|a, c| (a, c.span()))
@@ -76,11 +87,23 @@ where
     T: Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Expression>, Error<'tokens>> + Clone, // Statement
 {
     let block = extra_delimited(block).labelled("Code block").as_context();
-    let arguments = parameter_parser()
-        .map_with(|(name, b), ctx| ((b, name), ctx.span()))
-        .separated_by(just(Token::Comma).then(separator()))
-        .collect::<Vec<_>>()
-        .labelled("arguments");
+    let arguments = choice((
+        just(Token::Self_).map_with(|_, ctx| {
+            (
+                ("self".to_owned(), ctx.span()),
+                Some((Type::Self_, ctx.span())),
+            )
+        }),
+        name_parser().map_with(|name, ctx| (name, ctx.span())).then(
+            just(Token::Hashtag)
+                .ignore_then(type_parser().map_with(|type_, ctx| (type_, ctx.span())))
+                .or_not(),
+        ),
+    ))
+    .map_with(|(name, b), ctx| ((b, name), ctx.span()))
+    .separated_by(just(Token::Comma).then(separator()))
+    .collect::<Vec<_>>()
+    .labelled("arguments");
     let function = name_parser()
         .map_with(|name, ctx| (name, ctx.span()))
         .then(
@@ -107,34 +130,25 @@ where
         });
     function
 }
-pub fn struct_parser<'tokens, 'src: 'tokens, T>(
-    expr: T,
-) -> (impl Parser<
+pub fn struct_parser<'tokens, 'src: 'tokens>() -> (impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
     Spanned<StructDeclaration>, // Output
     Error<'tokens>,             // Error Type
-> + Clone)
-where
-    T: Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Expression>, Error<'tokens>> + Clone, // Statement
-{
-    let struct_field = parameter_parser()
-        .map_with(|(name, r#type), ctx| (StructField { name, r#type }, ctx.span()))
-        .labelled("struct declaration field");
-    let impl_block = just(Token::Impl)
-        .ignore_then(name_parser().or_not())
-        .then_ignore(just(Token::Colon))
-        .then(
-            function_definition(expr)
-                .separated_by(newline())
-                .allow_leading()
-                .collect::<Vec<Spanned<FunctionDeclaration>>>(),
-        )
-        .then_ignore(just(Token::Semicolon).padded_by(separator()));
-    let r#struct = name_parser()
+> + Clone) {
+    let struct_field = choice((
+        just(Token::Self_)
+            .map_with(|_, ctx| (("self".to_owned(), ctx.span()), (Type::Self_, ctx.span()))),
+        name_parser()
+            .map_with(|name, ctx| (name, ctx.span()))
+            .then_ignore(just(Token::Hashtag))
+            .then(type_parser().map_with(|type_, ctx| (type_, ctx.span()))),
+    ))
+    .map_with(|(name, r#type), ctx| (StructField { name, r#type }, ctx.span()))
+    .labelled("struct declaration field");
+    let r#struct = just(Token::Struct)
+        .ignore_then(type_name_parser())
         .map_with(|a, c| (a, c.span()))
-        .then_ignore(just(Token::Assign))
-        .then_ignore(just(Token::Struct))
         .then_ignore(just(Token::Colon))
         .then_ignore(separator())
         .then(
@@ -152,7 +166,7 @@ where
         //         .collect::<Vec<(Option<String>, Vec<Spanned<FunctionDeclaration>>)>>(),
         // )
         .then_ignore(just(Token::Semicolon).padded_by(separator()))
-        .map_with(|((struct_name, fields)), ctx| {
+        .map_with(|(struct_name, fields), ctx| {
             // let fns = fns.into_iter().fold(
             //     Vec::new(),
             //     |acc: Vec<_>, (name, fns): (Option<String>, Vec<Spanned<FunctionDeclaration>>)| {
@@ -172,11 +186,8 @@ where
         });
     r#struct
 }
-pub fn enum_parser<'tokens, 'src: 'tokens, T>(
-    expr: T,
+pub fn enum_parser<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<EnumDeclaration>, Error<'tokens>> + Clone
-where
-    T: Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Expression>, Error<'tokens>> + Clone,
 {
     let enum_fields = name_parser()
         .then(
@@ -199,21 +210,9 @@ where
         })
         .labelled("Enum field");
 
-    let impl_block = just(Token::Impl)
-        .ignore_then(name_parser().or_not())
-        .then_ignore(just(Token::Colon))
-        .then(
-            function_definition(expr)
-                .separated_by(newline())
-                .allow_leading()
-                .collect::<Vec<Spanned<FunctionDeclaration>>>(),
-        )
-        .then_ignore(just(Token::Semicolon).padded_by(separator()))
-        .labelled("Impl block");
-    let r#enum = name_parser()
+    let r#enum = just(Token::Enum)
+        .ignore_then(type_name_parser())
         .map_with(|a, c| (a, c.span()))
-        .then_ignore(just(Token::Assign))
-        .then_ignore(just(Token::Enum))
         .then_ignore(just(Token::Colon))
         .then_ignore(separator())
         .then(
@@ -231,7 +230,7 @@ where
         //         .collect::<Vec<(Option<String>, Vec<Spanned<FunctionDeclaration>>)>>(),
         // )
         .then_ignore(just(Token::Semicolon).padded_by(separator()))
-        .map_with(|((name, variants)), ctx| {
+        .map_with(|(name, variants), ctx| {
             // let impl_blocks = fns.into_iter().fold(
             //     Vec::new(),
             //     |acc: Vec<_>, (name, fns): (Option<String>, Vec<Spanned<FunctionDeclaration>>)| {
@@ -308,16 +307,56 @@ pub fn trait_parser<'tokens, 'src: 'tokens>(
                 ),
         )
         .map_with(|((name, ret), args), ctx| (TraitFns(name, args, ret), ctx.span()));
-    let r#trait = name_parser()
-        .then_ignore(just(Token::Assign))
-        .then_ignore(just(Token::Trait))
-        .then(
-            fns.separated_by(just(Token::Comma).padded_by(separator()))
-                .collect()
-                .delimited_by(
-                    just(Token::Colon).padded_by(separator()),
-                    just(Token::Semicolon).padded_by(separator()),
-                ),
-        );
+    let r#trait = (just(Token::Trait)).ignore_then(type_name_parser()).then(
+        fns.separated_by(just(Token::Comma).padded_by(separator()))
+            .collect()
+            .delimited_by(
+                just(Token::Colon).padded_by(separator()),
+                just(Token::Semicolon).padded_by(separator()),
+            ),
+    );
     return r#trait.map_with(|(a, b), ctx| (Trait(a, b), ctx.span()));
+}
+pub fn impl_parser<'tokens, 'src: 'tokens, T>(
+    expr: T,
+) -> (impl Parser<
+    'tokens,
+    ParserInput<'tokens, 'src>, // Input
+    Spanned<Impl>,              // Output
+    Error<'tokens>,             // Error Type
+> + Clone)
+where
+    T: Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Expression>, Error<'tokens>> + Clone, // Statement
+{
+    let impl_no_trait = just(Token::Impl)
+        .ignore_then(type_ident_parser_fallback())
+        .map_with(|a, ctx| ((a, ctx.span()), None));
+    let trait_impl = just(Token::Impl)
+        .ignore_then(type_ident_parser_fallback())
+        .map_with(|a, ctx| (a, ctx.span()))
+        .then_ignore(just(Token::For))
+        .then(ident_parser_fallback())
+        .map_with(|(a, b), ctx| (a, Some((b, ctx.span()))));
+    let impl_block = choice((impl_no_trait, trait_impl))
+        .then_ignore(just(Token::Colon))
+        .then(
+            function_definition(expr)
+                .separated_by(newline())
+                .allow_leading()
+                .allow_trailing()
+                .collect::<Vec<Spanned<FunctionDeclaration>>>(),
+        )
+        .then_ignore(just(Token::Semicolon).padded_by(separator()))
+        .map_with(|(a, fns), b| {
+            (
+                Impl {
+                    impl_for: a.0,
+                    impl_what: a.1,
+                    fns,
+                },
+                b.span(),
+            )
+        })
+        .labelled("Impl block");
+    impl_block
 }
