@@ -11,6 +11,7 @@ ariadne = "0.4.1"
 displaydoc = "*"
 logos = "0.13.0"
 thiserror = "1.0.61"
+visibility = "0.1.1"
 
 [dependencies.chumsky]
 git = "https://github.com/zesterer/chumsky"

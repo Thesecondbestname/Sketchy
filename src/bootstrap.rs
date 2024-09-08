@@ -64,7 +64,10 @@ pub fn copy_to_path() -> anyhow::Result<()> {
     std::fs::remove_file(current_exe)?;
     Ok(())
 }
-fn create_project_file(path: PathBuf, name: &String) -> std::result::Result<std::fs::File, String> {
+fn create_project_file(
+    path: &PathBuf,
+    name: &String,
+) -> std::result::Result<std::fs::File, String> {
     let mut proj = fs::File::create_new(&path)
         .map_err(|_| format!("failed to create {}", path.as_os_str().to_string_lossy()))?;
     let toml = format!("[project]\n\tname={}", name);

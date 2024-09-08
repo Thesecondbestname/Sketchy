@@ -67,34 +67,7 @@ fn enums() -> anyhow::Result<()> {
     ;";
     test(input, "enums")
 }
-#[test]
-fn modules() -> anyhow::Result<()> {
-    let input = r"
-    test = mod:
-        Print = use io/print
-        enum Foo:
-            baz
-        ;
-        trait Add: 
-            add#int: fn#int:int;,
-            int;
-        ;    
-        struct Baz :
-            lmao# int,
-            lmao2# int,
-        ;
-        impl Add:
-            add#int: Self; (
-                self.lmao + self.lmao2
-            )
-        ;
-        new#int: 
-            window #Window; ( 
-             a-4 *3
-        );
-";
-    test(input, "modules")
-}
+
 #[test]
 fn structs_with_impl() -> anyhow::Result<()> {
     let input = r"struct Baz:
@@ -238,6 +211,11 @@ fn string() -> anyhow::Result<()> {
     test(input, "string")
 }
 #[test]
+fn unary() -> anyhow::Result<()> {
+    let input = r#"g = !(true or false)"#;
+    test(input, "unary")
+}
+#[test]
 fn r#match() -> anyhow::Result<()> {
     let input = "
     x = match Some(x) if 
@@ -246,7 +224,7 @@ fn r#match() -> anyhow::Result<()> {
     test(input, "match")
 }
 #[test]
-fn multiple_statements() -> anyhow::Result<()> {
+fn multiple_expressions() -> anyhow::Result<()> {
     let input = "z = (
      x = 4+5
         x = 32

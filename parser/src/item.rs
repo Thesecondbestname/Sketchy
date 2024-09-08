@@ -1,6 +1,6 @@
 use crate::ast::{
     EnumDeclaration, EnumVariantDeclaration, Expression, FunctionDeclaration, Impl, Import, Item,
-    Module, StructDeclaration, StructField, Trait, TraitFns, Type, VariableDeclaration,
+    StructDeclaration, StructField, Trait, TraitFns, Type, VariableDeclaration,
 };
 use crate::convenience_parsers::{name_parser, separator, type_parser};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned};
@@ -54,23 +54,7 @@ where
             .as_context(),
         // block.then_ignore(separator()).map(|a| Item::TopLevelExprError(a.0))
     ));
-    let module = name_parser()
-        .map_with(|a, c| (a, c.span()))
-        .then_ignore(just(Token::Assign))
-        .then_ignore(just(Token::Module))
-        .then(
-            declarations
-                .clone()
-                .map_with(|a, c| (a, c.span()))
-                .separated_by(separator())
-                .collect()
-                .delimited_by(
-                    just(Token::Colon).delimited_by(separator(), separator()),
-                    just(Token::Semicolon).delimited_by(separator(), separator()),
-                ),
-        )
-        .map_with(|(a, b), ctx| Item::Module((Module(a, b), ctx.span())));
-    choice((declarations, module))
+    declarations
 }
 // fn = name ":" (ident "#" type ,)*; type block
 pub fn function_definition<'tokens, 'src: 'tokens, T>(

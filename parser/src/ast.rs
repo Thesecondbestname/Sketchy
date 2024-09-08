@@ -21,7 +21,6 @@ pub enum Pattern {
     Struct(Ident, Vec<(Spanned<Name>, Spanned<Pattern>)>),
     Tuple(Vec<Spanned<Pattern>>),
     Array(Vec<Spanned<Pattern>>, Name),
-    Error,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Name {
@@ -30,9 +29,9 @@ pub enum Name {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, visibility::make(pub(crate)))]
 pub enum Item {
     Function(Spanned<FunctionDeclaration>),
-    Module(Spanned<Module>),
     Import(Spanned<Import>),
     Enum(Spanned<EnumDeclaration>),
     Struct(Spanned<StructDeclaration>),
@@ -46,8 +45,6 @@ pub enum Item {
 pub struct Trait(pub String, pub Vec<Spanned<TraitFns>>);
 #[derive(Debug, Clone)]
 pub struct Import(pub Spanned<String>, pub Vec<Spanned<String>>);
-#[derive(Debug, Clone)]
-pub struct Module(pub Spanned<String>, pub Vec<Spanned<Item>>);
 
 #[derive(Debug, Clone)]
 pub struct TraitFns(
@@ -91,6 +88,8 @@ pub struct StructField {
     pub name: Spanned<String>,
     pub r#type: Spanned<Type>,
 }
+
+#[cfg_attr(test, visibility::make(pub(crate)))]
 #[derive(Clone, Debug)]
 pub enum Expression {
     ParserError,
@@ -102,7 +101,6 @@ pub enum Expression {
         arms: Vec<(Spanned<Pattern>, Spanned<Expression>)>,
     },
     Ident(Ident),
-    // List(Vec<Spanned<Self>>),
     FunctionCall(Box<Spanned<Self>>, Vec<Spanned<Self>>),
     MethodCall(Box<Spanned<Self>>, Ident, Vec<Spanned<Self>>),
     Block(Block),
@@ -129,15 +127,14 @@ pub struct For {
 }
 #[derive(Clone, Debug)]
 /// An enum of all possible values. A type can have
+#[cfg_attr(test, visibility::make(pub(crate)))]
 pub enum Value {
     String(String),
     Number(Number),
-    Array(i64, Vec<Type>),
     Tuple(Vec<Spanned<Expression>>),
     Char(char),
     Bool(bool),
     Span(i32, Option<i32>),
-    Option(Box<Expression>),
     Struct {
         name: Spanned<Ident>,
         fields: Spanned<Vec<(Spanned<String>, Spanned<Expression>)>>,
@@ -170,6 +167,7 @@ pub enum BinaryOp {
 }
 /// The type of an expression
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, visibility::make(pub(crate)))]
 pub enum Type {
     Self_,
     Int,
@@ -208,7 +206,6 @@ crate::impl_display!(Value, |s: &Value| match s {
     Value::String(string) => string.to_string(),
     Value::Number(Number::Int(int)) => format!("{int}"),
     Value::Number(Number::Float(float)) => format!("{float}"),
-    Value::Array(len, vals) => format!("{{len:{len} [{vals:?}]}}"),
     Value::Tuple(vals) => format!("({})", format_join(vals, ",").unwrap_or_default()),
     Value::Char(char) => format!("'{char}'"),
     Value::Bool(bool) => format!("{bool}"),
@@ -216,7 +213,6 @@ crate::impl_display!(Value, |s: &Value| match s {
         "{start}..{}",
         end.map(|x| x.to_string()).unwrap_or_default()
     ),
-    Value::Option(val) => format!("{val}?"),
     Value::Struct { name, fields } => format!(
         "{} {{{}}}",
         name.0,
@@ -444,12 +440,7 @@ crate::impl_display!(Item, |s: &Item| {
             ));
             message
         }
-        Item::Module(mod_) => format!(
-            "mod {} {{{}}}",
-            mod_.0 .0 .0,
-            format_join(&mod_.0 .1, ",\n").unwrap_or_default()
-        ),
-        Item::TopLevelExprError(_) => todo!(),
+        Item::TopLevelExprError(a) => format!("Erronious Expression {a}"),
     }
 });
 crate::impl_display!(Name, |s: &Name| {
@@ -487,7 +478,6 @@ crate::impl_display!(Pattern, |s: &Pattern| {
         }
         Pattern::Name(name) => name.to_string(),
         Pattern::Value(e) => e.0.to_string(),
-        Pattern::Error => "Bad pattern(probably expression)".to_owned(),
     }
 });
 impl Number {

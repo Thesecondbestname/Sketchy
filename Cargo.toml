@@ -18,5 +18,3 @@ chrono = "0.4.38"
 [lints.clippy]
 pedantic = "deny"
 nursery = "deny"
-use_glob_enum = "deny"
-use_unwrap = "deny"
