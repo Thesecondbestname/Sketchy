@@ -29,7 +29,7 @@ pub enum Name {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(test, visibility::make(pub(crate)))]
+// #[cfg_attr(test, visibility::make(pub(crate)))]
 pub enum Item {
     Function(Spanned<FunctionDeclaration>),
     Import(Spanned<Import>),
@@ -89,7 +89,7 @@ pub struct StructField {
     pub r#type: Spanned<Type>,
 }
 
-#[cfg_attr(test, visibility::make(pub(crate)))]
+// #[cfg_attr(test, visibility::make(pub(crate)))]
 #[derive(Clone, Debug)]
 pub enum Expression {
     ParserError,
@@ -127,7 +127,7 @@ pub struct For {
 }
 #[derive(Clone, Debug)]
 /// An enum of all possible values. A type can have
-#[cfg_attr(test, visibility::make(pub(crate)))]
+// #[cfg_attr(test, visibility::make(pub(crate)))]
 pub enum Value {
     String(String),
     Number(Number),
@@ -167,7 +167,7 @@ pub enum BinaryOp {
 }
 /// The type of an expression
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, visibility::make(pub(crate)))]
+// #[cfg_attr(test, visibility::make(pub(crate)))]
 pub enum Type {
     Self_,
     Int,

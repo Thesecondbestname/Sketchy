@@ -9,9 +9,9 @@ pub fn check_version() -> Result<String, anyhow::Error> {
     let current_exe = env::current_exe()?;
     let _current_exe_name = current_exe.file_name().unwrap();
 
-    #[cfg(target_os = "windows")]
+    #[cfg(not(target_os = "linux"))]
     let version_cmd = "dumpbin /headers";
-    #[cfg(target_os = "linux")]
+    #[cfg(not(target_os = "linux"))]
     let version_cmd = "objdump -p";
 
     let output = Command::new(version_cmd).arg(current_exe).output()?;
@@ -38,7 +38,7 @@ pub fn copy_to_path() -> anyhow::Result<()> {
         return Err(anyhow::Error::msg("Failed to get current exe file"));
     };
 
-    #[cfg(target_os = "windows")]
+    #[cfg(not(target_os = "linux"))]
     let path_var = "%PATH%";
     #[cfg(target_os = "linux")]
     let path_var = "PATH";

@@ -76,7 +76,8 @@ pub struct Environment {
     pub graphics: Option<bool>,
 }
 impl File {
-    #[cfg(target_os = "linux")]
+    // #[cfg(target_os = "linux")]
+    #[cfg(not(target_os = "windows"))]
     pub fn get_name(&self) -> String {
         self.path
             .split('/')
