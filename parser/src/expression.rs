@@ -1,5 +1,7 @@
 #![allow(clippy::too_many_lines)]
-use crate::ast::{BinaryOp, Block, ComparisonOp, Expression, For, If, Item, MathOp, Number, Value};
+use std::collections::HashSet;
+
+use crate::ast::{BinaryOp, ComparisonOp, Expression, For, If, Item, MathOp, Number, Value};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned};
 use crate::util_parsers::{
     extra_delimited, ident_parser_fallback, name_parser, refutable_pattern, separator,
@@ -21,7 +23,29 @@ where
 {
     let ident = ident_parser_fallback();
     let delim_block = extra_delimited(stmt.repeated().collect::<Vec<_>>())
-        .map(|items| Expression::Block(Block(items)))
+        .map(|items| {
+            let mut enums = HashSet::new();
+            let mut structs = HashSet::new();
+            let mut vars = HashSet::new();
+            let mut funs = HashSet::new();
+            // let mut imports = HashSet::new();
+            for (item, _) in &items {
+                match item {
+                    Item::Function((a, _)) => {funs.insert(a.name.0.clone());},
+                    Item::Import(_) => todo!(),
+                    Item::Enum((e, _)) => {enums.insert(e.name.0.clone());},
+                    Item::Struct((s, _)) => {structs.insert(s.name.0.clone());},
+                    Item::Assingment((v,_)) => {
+                        let x = 
+                            v.0.0.get_names()[0].clone();
+                            dbg!(&x);
+                            dbg!(&v);
+                        vars.insert(x);},                    
+                    Item::Trait(_) => todo!(),
+                    _ => ()
+                }
+            }
+            Expression::Block(items)})
         .labelled("Code block");
 
     // The recursive expression Part
@@ -62,7 +86,6 @@ where
             })
             .labelled("Object construction");
         let inline_expression = {
-            // let unary = choice((just(Token::Bang).then(expression), just()))
             // A list of expressions
             let items = expression
                 .clone()
@@ -109,8 +132,17 @@ where
                     .as_context(), // Atoms can also just be normal expressions, but surrounded with parentheses
             );
 
+            let unary = just(Token::Bang).map_with(|a, ctx| (a, ctx.span()))
+                .repeated()
+                .foldr(
+                    atom.clone(), 
+                    |a, ctx| {
+                        let span = a.1.start..ctx.1.end;
+                        (Expression::UnaryBool(Box::new(ctx)), span.into())
+                    }
+                );
             // Function calls have very high precedence so we prioritise them
-            let call = atom
+            let call = unary
                 .clone()
                 .foldl(
                     list.clone()
@@ -241,43 +273,43 @@ where
             .labelled("comparison")
             .as_context();
 
-            // if => "if" expr "then" expr
-            let if_ = just(Token::If)
-                .ignore_then(expression.clone())
-                .recover_with(via_parser(nested_delimiters(
-                    Token::If,
-                    Token::Then,
-                    [
-                        (Token::Lbracket, Token::Rbracket),
-                        (Token::Lparen, Token::Semicolon),
-                    ],
-                    |span| (Expression::ParserError, span),
-                )))
-                .labelled("Condition")
-                .as_context()
-                .then_ignore(just(Token::Then))
-                .then(
-                    expression
-                        .clone()
-                        .labelled("If block")
-                        .as_context()
-                        .recover_with(via_parser(nested_delimiters(
-                            Token::Lparen,
-                            Token::Rparen,
-                            [(Token::Lbracket, Token::Rbracket)],
-                            |span| (Expression::ParserError, span),
-                        ))),
-                )
-                .map_with(|(condition, code_block), ctx| {
-                    (
-                        Expression::If(Box::new(If {
-                            condition,
-                            code_block,
-                        })),
-                        ctx.span(),
-                    )
-                })
-                .labelled("if *expression*");
+            // // if => "if" expr "then" expr
+            // let if_ = just(Token::If)
+            //     .ignore_then(expression.clone())
+            //     .recover_with(via_parser(nested_delimiters(
+            //         Token::If,
+            //         Token::Then,
+            //         [
+            //             (Token::Lbracket, Token::Rbracket),
+            //             (Token::Lparen, Token::Semicolon),
+            //         ],
+            //         |span| (Expression::ParserError, span),
+            //     )))
+            //     .labelled("Condition")
+            //     .as_context()
+            //     .then_ignore(just(Token::Then))
+            //     .then(
+            //         expression
+            //             .clone()
+            //             .labelled("If block")
+            //             .as_context()
+            //             .recover_with(via_parser(nested_delimiters(
+            //                 Token::Lparen,
+            //                 Token::Rparen,
+            //                 [(Token::Lbracket, Token::Rbracket)],
+            //                 |span| (Expression::ParserError, span),
+            //             ))),
+            //     )
+            //     .map_with(|(condition, code_block), ctx| {
+            //         (
+            //             Expression::If(Box::new(If {
+            //                 condition,
+            //                 code_block,
+            //             })),
+            //             ctx.span(),
+            //         )
+            //     })
+            //     .labelled("if *expression*");
             let r#match = just(Token::Match)
                 .ignore_then(expression.clone())
                 .recover_with(via_parser(nested_delimiters(
@@ -339,7 +371,6 @@ where
             // Comparison ops (equal, not-equal) have equal precedence
             choice((
                 comp.labelled("line expression").as_context(),
-                if_,
                 r#match,
                 for_loop,
             ))

@@ -1,4 +1,4 @@
-use crate::ast::{Block, Expression, Item};
+use crate::ast::{Block, Expression, FunctionDeclaration, Item};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned};
 use crate::error::{errors_to_diagnostics, Diagnostic, ParseError, Pattern};
 use crate::expression::expression;
@@ -10,26 +10,18 @@ use crate::Token;
 use chumsky::prelude::*;
 use thiserror::Error as DeriveError;
 
-pub fn block<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>, // Input
-    Spanned<Item>,              // Output
-    Error<'tokens>,             // Error Type)
-> + Clone {
-    // import, function, statement
-    let x = recursive(|block| {
-        let block_element = item(expression(block.clone()));
-        block_element.map_with(|expr, ctx| (expr, ctx.span()))
-    });
-    x
-}
 pub fn programm<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
     Spanned<Expression>,        // Output
     Error<'tokens>,             // Error Type)
 > + Clone {
-    block()
+        // import, function, statement
+        recursive(|block| {
+            let block_element = item(expression(block.clone()));
+            block_element.map_with(|expr, ctx| {
+                (expr, ctx.span())})
+        })
         .validate(|it, ctx, emmit| {
             if let Item::TopLevelExprError(_) = it.0 {
                 emmit.emit(ParseError::expected_found_help(
@@ -43,7 +35,7 @@ pub fn programm<'tokens, 'src: 'tokens>() -> impl Parser<
         })
         .repeated()
         .collect::<Vec<_>>()
-        .map_with(|items, ctx| (Expression::Block(Block(items)), ctx.span()))
+        .map_with(|items, ctx| (Expression::Block(items), ctx.span()))
 }
 // ----- STATES ----
 #[derive(Default, Clone)]

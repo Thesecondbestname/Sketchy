@@ -11,6 +11,7 @@ colored = "2"
 ariadne = "0.1.5"
 chumsky = "0.9.3"
 parser = { path = "parser" }
+analysis = { path = "analysis" }
 anyhow = "1.0.86"
 terminal_size = "0.3.0"
 chrono = "0.4.38"

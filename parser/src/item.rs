@@ -52,7 +52,6 @@ where
             .map(Item::ImplBlock)
             .labelled("Struct")
             .as_context(),
-        // block.then_ignore(separator()).map(|a| Item::TopLevelExprError(a.0))
     ));
     declarations
 }
@@ -261,7 +260,7 @@ pub fn assingment<'tokens, 'src: 'tokens, T>(
     Error<'tokens>,               // Error Type
 > + Clone)
 where
-    T: Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Expression>, Error<'tokens>> + Clone, // Statement
+    T: Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Expression>, Error<'tokens>> + Clone,
 {
     let assignment = irrefutable_pattern()
         .then(just(Token::Assign).ignore_then(expr))
@@ -308,7 +307,7 @@ pub fn impl_parser<'tokens, 'src: 'tokens, T>(
     Error<'tokens>,             // Error Type
 > + Clone)
 where
-    T: Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Expression>, Error<'tokens>> + Clone, // Statement
+    T: Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Expression>, Error<'tokens>> + Clone,
 {
     let impl_no_trait = just(Token::Impl)
         .ignore_then(type_ident_parser_fallback())

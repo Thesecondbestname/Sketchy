@@ -247,10 +247,7 @@ where
     };
     let name_pattern = choice((
         nuthing,
-        ident_parser_fallback().map(|ident| {
-            let Ident(s) = ident;
-            Name::Name(s)
-        }),
+        name_parser().map(|a| Name::Name(a))
     ));
     let tuple_destructure = pattern
         .clone()

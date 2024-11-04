@@ -24,7 +24,7 @@ pub enum Pattern {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Name {
-    Name(Vec<Spanned<String>>),
+    Name(String),
     Underscore,
 }
 
@@ -103,7 +103,7 @@ pub enum Expression {
     Ident(Ident),
     FunctionCall(Box<Spanned<Self>>, Vec<Spanned<Self>>),
     MethodCall(Box<Spanned<Self>>, Ident, Vec<Spanned<Self>>),
-    Block(Block),
+    Block(Vec<Spanned<Item>>),
     Value(Value),
     Else(Box<Spanned<Self>>, Box<Spanned<Self>>),
     UnaryBool(Box<Spanned<Self>>),
@@ -256,7 +256,9 @@ crate::impl_display!(Expression, |s: &Expression| {
                 format_join(args, ",").unwrap_or_default()
             )
         }
-        Expression::Block(block) => format!("{block}"),
+        Expression::Block(block) => format!("{}", block.iter()
+        .fold(String::new(), |acc, elem| acc + &format!("{}", elem.0))
+        ),
         Expression::If(if_) => format!("{if_}"),
         Expression::Comparison(lhs, op, rhs) => format!("({} {op} {})", lhs.0, rhs.0),
         Expression::Binary(a, op, b) => format!("({} {op} {})", a.0, b.0),
@@ -445,7 +447,7 @@ crate::impl_display!(Item, |s: &Item| {
 });
 crate::impl_display!(Name, |s: &Name| {
     match s {
-        Name::Name(name) => format_join(name, "::").unwrap_or_default(),
+        Name::Name(name) => name.to_string(),
         Name::Underscore => "_".to_string(),
     }
 });
@@ -488,6 +490,20 @@ impl Number {
     #[inline]
     pub fn from_f32(num: f32) -> Self {
         Number::Float(num.into())
+    }
+}
+impl Pattern {
+    pub fn get_names(&self) -> Vec<String> {
+        match self {
+            Pattern::Name(Name::Name(n)) => vec![n.to_string()],
+            Pattern::Name(name) => vec![],
+            Pattern::Value(_) => panic!("Can not get name of a value pattern. Internal error"),
+            Pattern::Enum(_, vec) => vec.iter().map(|a|a.0.get_names()).flatten().collect(),
+            Pattern::Struct(_, vec) => todo!(),
+            Pattern::Tuple(vec) => vec.iter().map(|a|a.0.get_names()).flatten().collect(),
+            Pattern::Array(vec, Name::Name(g)) => {let mut x: Vec<_> = vec.iter().map(|a|a.0.get_names()).flatten().collect(); x.push(g.to_string()); x},
+            Pattern::Array(vec, name) => {todo!()}
+        }
     }
 }
 #[macro_export]

@@ -68,9 +68,9 @@ fn create_project_file(
     path: &PathBuf,
     name: &String,
 ) -> std::result::Result<std::fs::File, String> {
-    let mut proj = fs::File::create_new(&path)
+    let mut proj = fs::File::create_new(path)
         .map_err(|_| format!("failed to create {}", path.as_os_str().to_string_lossy()))?;
-    let toml = format!("[project]\n\tname={}", name);
+    let toml = format!("[project]\n\tname={name}");
     proj.write(toml.as_bytes()).map_err(|_| {
         format!(
             "failed to populate {} with default values",
@@ -88,7 +88,7 @@ pub fn create_env(name: &String, graphics: bool) -> Result<(), String> {
                 fs::create_dir(a.join(name))
                     .inspect(|()| trace!("Successfully created project root"))
                     .map_or_else(
-                        |_| Err(format!("Failed to create project root {}", name)),
+                        |_| Err(format!("Failed to create project root {name}", )),
                         |()| Ok(a.join(name)),
                     )
             },

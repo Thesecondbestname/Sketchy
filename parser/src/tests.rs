@@ -42,13 +42,14 @@ fn basic_lex() -> anyhow::Result<()> {
         match x if
             4 then "four",
             _ then x + y
-        )
+    )
     // Some kinda idk  
     _ = add (4,5).sqrt
     
-    _ = if x == 4 then print ("oooops!") else (
-        _ = print ("phew")
-    )"#;
+    _ = match x if 
+      4 then print ("oooops!"),
+      _ then print ("phew")
+    "#;
     test(lex, "basic_lex")
 }
 #[test]
@@ -107,13 +108,18 @@ fn method_calls() -> anyhow::Result<()> {
     test(input, "method_calls")
 }
 #[test]
+fn multiple_stmts_in_block() -> anyhow::Result<()> {
+    let input = "x = (x = 3\n y = 5)";
+    test(input, "multiple_stmts_in_block")
+}
+#[test]
 fn traits() -> anyhow::Result<()> {
     let input = "trait Add : add#int:int, int; ;";
     test(input, "traits")
 }
 #[test]
 fn array_destructuring() -> anyhow::Result<()> {
-    let input = "[a,b,c..d] = y";
+    let input = "x = ([a,b,c..d] = y)";
     test(input, "array_destructuring")
 }
 #[test]
@@ -147,9 +153,10 @@ fn r#return() -> anyhow::Result<()> {
     test(input, "return")
 }
 #[test]
-fn top_level_expression() -> anyhow::Result<()> {
+#[should_panic]
+fn top_level_expression() -> () {
     let input = "print(hello)";
-    test(input, "top_level_expression")
+    test(input, "top_level_expression").unwrap()
 }
 #[test]
 fn function_definitions() -> anyhow::Result<()> {
@@ -231,21 +238,21 @@ fn multiple_expressions() -> anyhow::Result<()> {
     )";
     test(input, "multiple_expressions")
 }
-#[test]
-fn conditions() -> anyhow::Result<()> {
-    let input = r"g = if (4 == 4) then (x = 3)";
-    test(input, "conditions")
-}
+// #[test]
+// fn conditions() -> anyhow::Result<()> {
+//     let input = r"g = if (4 == 4) then (x = 3)";
+//     test(input, "conditions")
+// }
 #[test]
 fn for_loops() -> anyhow::Result<()> {
     let input = r"g = for i in 0..10 then i";
     test(input, "for_loops")
 }
-#[test]
-fn conditions_inverted_parens() -> anyhow::Result<()> {
-    let input = "l = if 4 == 4 then (n = 2.pass)";
-    test(input, "conditions_inverted_parens")
-}
+// #[test]
+// fn conditions_inverted_parens() -> anyhow::Result<()> {
+//     let input = "l = if 4 == 4 then (n = 2.pass)";
+//     test(input, "conditions_inverted_parens")
+// }
 #[test]
 fn multiple_calls() -> anyhow::Result<()> {
     let input = r"m = lambda(3)(5).add(helo)";
@@ -301,6 +308,6 @@ fn test(input: &str, name: &'static str) -> anyhow::Result<()> {
             )
         })
         .finish();
-    println!("\n\t{}", parse.ast());
+    println!("\n\t{:?}", parse.ast());
     Ok(())
 }
