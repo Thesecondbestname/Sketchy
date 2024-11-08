@@ -34,6 +34,7 @@ impl LexResult {
 
 #[derive(Logos, Debug, PartialEq, Clone, Hash)]
 #[logos(skip r"[ \t\f]+|(?://.*\n|/\*[\s\S]*\*/)")]
+// #[cfg_attr(test, visibility::make(pub(crate)))]
 pub enum Token {
     #[token("+")]
     Plus,
@@ -93,6 +94,8 @@ pub enum Token {
     Gte,
     #[token("..")]
     DoubleDot,
+    #[token("'")]
+    Asterisc,
     #[regex(r"(\d+)\.\.(\d+)?", |lex| parse_span(lex.slice()))]
     Span(Span),
     #[regex("[a-zA-Z_öäü][a-zA-Z0-9_öäü]*", |lex| lex.slice().to_string())]
@@ -153,7 +156,6 @@ fn type_matcher(lex: &Lexer<Token>) -> ast::Type {
         "int" => ast::Type::Int,
         "float" => ast::Type::Float,
         "string" => ast::Type::String,
-        "char" => ast::Type::Char,
         _ => unreachable!(),
     }
 }
@@ -251,6 +253,7 @@ impl_display!(Token, |s: &Token| {
         Token::Impl => "impl".to_owned(),
         Token::DoubleDot => "..".to_owned(),
         Token::Rbucket => "]".to_owned(),
+        Token::Asterisc => "'".to_owned(),
         Token::Lbucket => "[".to_owned(),
         Token::Self_ => "self".to_owned(),
         Token::Trait => "trait".to_owned(),

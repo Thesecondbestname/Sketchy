@@ -12,6 +12,22 @@ pub fn name_parser<'tokens, 'src: 'tokens>() -> impl Parser<
 > + Clone {
     select! { Token::Ident(ident) => ident }.labelled("Name")
 }
+pub fn generic_parser<'tokens, 'src: 'tokens>() -> impl Parser<
+    'tokens,
+    ParserInput<'tokens, 'src>, // Input
+    ast::Generic,               // Output
+    Error<'tokens>,             // Error Type
+> + Clone {
+    just(Token::Asterisc)
+        .ignore_then(name_parser().map_with(|a, ctx| (a, ctx.span())))
+        .then(
+            just(Token::Hashtag)
+                .ignore_then(name_parser().map_with(|a, ctx| (a, ctx.span())))
+                .separated_by(just(Token::Plus))
+                .collect(),
+        )
+        .map_with(|a, ctx| ast::Generic(a))
+}
 pub fn type_name_parser<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
@@ -32,20 +48,6 @@ pub fn type_name_parser<'tokens, 'src: 'tokens>() -> impl Parser<
         })
         .labelled("Name")
 }
-// pub fn ident_parser<'tokens, 'src: 'tokens>() -> impl Parser<
-//     'tokens,
-//     ParserInput<'tokens, 'src>, // Input
-//     Ident,                      // Output
-//     Error<'tokens>,             // Error Type
-// > + Clone {
-//     select! { Token::Ident(ident) if ident.chars().next().is_some_and(char::is_lowercase) => ident }
-//         .map_with(|a, ctx| (a, ctx.span()))
-//         .separated_by(just(Token::DoubleColon))
-//         .at_least(1)
-//         .collect()
-//         .map(ast::Ident)
-//         .labelled("Identifier")
-// }
 pub fn ident_parser_fallback<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input

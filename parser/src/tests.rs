@@ -7,11 +7,11 @@ fn basic_lex() -> anyhow::Result<()> {
     y = 69 / (56 - 0.45)
     _ = print::print(works)
     Print = use io/print
-    enum Foo :
+    enum Foo:
         baz
     ;
-    trait Add: 
-        add: fn#int:int;,
+    trait'A,'B#Add,'C Add : 
+        add: fn#A:B;,
         int;
     ;    
     struct Baz:
@@ -230,6 +230,8 @@ fn r#match() -> anyhow::Result<()> {
             None then panic()";
     test(input, "match")
 }
+
+    let input = "z = (
 #[test]
 fn multiple_expressions() -> anyhow::Result<()> {
     let input = "z = (
@@ -245,7 +247,7 @@ fn multiple_expressions() -> anyhow::Result<()> {
 // }
 #[test]
 fn for_loops() -> anyhow::Result<()> {
-    let input = r"g = for i in 0..10 then i";
+    let input = r"g = for 0..10 :i; i";
     test(input, "for_loops")
 }
 // #[test]
@@ -284,7 +286,7 @@ fn test(input: &str, name: &'static str) -> anyhow::Result<()> {
             Report::build(ReportKind::Error, name, 12)
                 .with_message(format!("Error while lexing test {input}"))
                 .with_label(
-                    Label::new((name, span.start - 1..span.end - 1))
+                    Label::new((name, span.start..span.end))
                         .with_message(format!("Found unexpected Token {token}"))
                         .with_color(a),
                 )

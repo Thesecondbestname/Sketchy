@@ -6,7 +6,7 @@ use crate::convenience_parsers::{name_parser, separator, type_parser};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned};
 use crate::lexer::Token;
 use crate::util_parsers::{
-    extra_delimited, ident_parser_fallback, irrefutable_pattern, newline,
+    extra_delimited, generic_parser, ident_parser_fallback, irrefutable_pattern, newline,
     type_ident_parser_fallback, type_name_parser,
 };
 
@@ -48,6 +48,7 @@ where
             .labelled("Struct")
             .as_context(),
         impl_parser(block.clone())
+            .map_with(|a, ctx| (a, ctx.span()))
             .then_ignore(separator())
             .map(Item::ImplBlock)
             .labelled("Struct")
@@ -203,32 +204,8 @@ pub fn enum_parser<'tokens, 'src: 'tokens>(
                 .collect::<Vec<(EnumVariantDeclaration, Span)>>(),
         )
         .then_ignore(separator())
-        // .then(
-        //     impl_block
-        //         .labelled("impl block")
-        //         .as_context()
-        //         .separated_by(separator())
-        //         .collect::<Vec<(Option<String>, Vec<Spanned<FunctionDeclaration>>)>>(),
-        // )
         .then_ignore(just(Token::Semicolon).padded_by(separator()))
-        .map_with(|(name, variants), ctx| {
-            // let impl_blocks = fns.into_iter().fold(
-            //     Vec::new(),
-            //     |acc: Vec<_>, (name, fns): (Option<String>, Vec<Spanned<FunctionDeclaration>>)| {
-            //         acc.into_iter()
-            //             .chain(vec![name].into_iter().cycle().zip(fns))
-            //             .collect::<Vec<(Option<String>, Spanned<FunctionDeclaration>)>>()
-            //     },
-            // );
-            (
-                EnumDeclaration {
-                    name,
-                    variants,
-                    impl_blocks: vec![],
-                },
-                ctx.span(),
-            )
-        });
+        .map_with(|(name, variants), ctx| (EnumDeclaration { name, variants }, ctx.span()));
     r#enum
 }
 
@@ -237,7 +214,7 @@ pub fn import<'tokens, 'src: 'tokens>(
     let ident = name_parser();
     let import = name_parser()
         .map_with(|a, c| (a, c.span()))
-        //. FAT TODO: UTILIZE NAME GIVEN TO MODULE
+        // FAT TODO: UTILIZE NAME GIVEN TO MODULE
         .then_ignore(just(Token::Assign))
         .then_ignore(just(Token::Import))
         .then(
@@ -288,24 +265,32 @@ pub fn trait_parser<'tokens, 'src: 'tokens>(
                 ),
         )
         .map_with(|((name, ret), args), ctx| (TraitFns(name, args, ret), ctx.span()));
-    let r#trait = (just(Token::Trait)).ignore_then(type_name_parser()).then(
-        fns.separated_by(just(Token::Comma).padded_by(separator()))
-            .collect()
-            .delimited_by(
-                just(Token::Colon).padded_by(separator()),
-                just(Token::Semicolon).padded_by(separator()),
-            ),
-    );
-    return r#trait.map_with(|(a, b), ctx| (Trait(a, b), ctx.span()));
+    let r#trait = just(Token::Trait)
+        .ignore_then(
+            generic_parser()
+                .map_with(|a, ctx| (a, ctx.span()))
+                .separated_by(just(Token::Comma))
+                .collect(),
+        )
+        .then(type_name_parser())
+        .then(
+            fns.separated_by(just(Token::Comma).padded_by(separator()))
+                .collect()
+                .delimited_by(
+                    just(Token::Colon).padded_by(separator()),
+                    just(Token::Semicolon).padded_by(separator()),
+                ),
+        );
+    return r#trait.map_with(|((g, n), fns), ctx| (Trait(g, n, fns), ctx.span()));
 }
 pub fn impl_parser<'tokens, 'src: 'tokens, T>(
     expr: T,
-) -> (impl Parser<
+) -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
-    Spanned<Impl>,              // Output
+    Impl,                       // Output
     Error<'tokens>,             // Error Type
-> + Clone)
+> + Clone
 where
     T: Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Expression>, Error<'tokens>> + Clone,
 {
@@ -328,15 +313,10 @@ where
                 .collect::<Vec<Spanned<FunctionDeclaration>>>(),
         )
         .then_ignore(just(Token::Semicolon).padded_by(separator()))
-        .map_with(|(a, fns), b| {
-            (
-                Impl {
-                    impl_for: a.0,
-                    impl_what: a.1,
-                    fns,
-                },
-                b.span(),
-            )
+        .map(|(a, fns)| Impl {
+            impl_for: a.0,
+            impl_what: a.1,
+            fns,
         })
         .labelled("Impl block");
     impl_block

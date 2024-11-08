@@ -1,4 +1,4 @@
-#![deny(dead_code)]
+// #![deny(dead_code)]
 pub use lexer::Token;
 
 mod ast;

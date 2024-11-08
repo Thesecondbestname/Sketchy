@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use crate::ast::{BinaryOp, ComparisonOp, Expression, For, If, Item, MathOp, Number, Value};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned};
 use crate::util_parsers::{
-    extra_delimited, ident_parser_fallback, name_parser, refutable_pattern, separator,
-    type_ident_parser, type_ident_parser_fallback,
+    extra_delimited, ident_parser_fallback, irrefutable_pattern, name_parser, refutable_pattern,
+    separator, type_ident_parser, type_ident_parser_fallback,
 };
 use crate::Token;
 use chumsky::prelude::*;
@@ -118,19 +118,17 @@ where
             .labelled("Atom")
             .as_context()
             .map_with(|expr, span| (expr, span.span()))
-            .or(
-                extra_delimited(expression.clone())
-                    .clone()
-                    // Attempt to recover anything that looks like a parenthesised expression but contains errors
-                    .recover_with(via_parser(nested_delimiters(
-                        Token::Lparen,
-                        Token::Rparen,
-                        [(Token::Lbracket, Token::Rbracket)],
-                        |span| (Expression::ParserError, span),
-                    )))
-                    .labelled("Expression Block")
-                    .as_context(), // Atoms can also just be normal expressions, but surrounded with parentheses
-            );
+            .or(extra_delimited(expression.clone())
+                .clone()
+                // Attempt to recover anything that looks like a parenthesised expression but contains errors
+                .recover_with(via_parser(nested_delimiters(
+                    Token::Lparen,
+                    Token::Rparen,
+                    [(Token::Lbracket, Token::Rbracket)],
+                    |span| (Expression::ParserError, span),
+                )))
+                .labelled("Expression Block")
+                .as_context());
 
             let unary = just(Token::Bang).map_with(|a, ctx| (a, ctx.span()))
                 .repeated()
@@ -187,13 +185,27 @@ where
                 )
                 .labelled("method call");
 
+            let op = just(Token::Bang);
+            let not = op
+                .or_not()
+                .then(method_call)
+                .clone()
+                .map_with(|(op, a), ctx| {
+                    if let Some(_) = op {
+                        (Expression::UnaryBool(Box::new(a)), ctx.span())
+                    } else {
+                        a
+                    }
+                })
+                .labelled("not")
+                .as_context();
             // Product ops (multiply and divide) have equal precedence
             let op = just(Token::Mul)
                 .to(MathOp::Mul)
                 .or(just(Token::Slash).to(MathOp::Div));
-            let product = method_call
+            let product = not
                 .clone()
-                .foldl(op.then(method_call).repeated(), |a, (op, b)| {
+                .foldl(op.then(not).repeated(), |a, (op, b)| {
                     let span = a.1.start..b.1.end;
                     (
                         Expression::MathOp(Box::new(a), op, Box::new(b)),
@@ -240,7 +252,7 @@ where
                     Token::Or => BinaryOp::Or,
                 };
                 else_expression.clone().foldl(
-                    op.then(sum).repeated(),
+                    op.then(sum.clone()).repeated(),
                     |lhs: Spanned<Expression>, (op, rhs): (_, Spanned<Expression>)| {
                         let span = Span::new(lhs.1.start, rhs.1.end);
                         (Expression::Binary(Box::new(lhs), op, Box::new(rhs)), span)
@@ -256,8 +268,8 @@ where
                     Token::Neq => ComparisonOp::Neq,
                     Token::Gt => ComparisonOp::Gt,
                     Token::Lt => ComparisonOp::Lt,
-                    Token::Gte => ComparisonOp::Gt,
-                    Token::Lte => ComparisonOp::Lt,
+                    Token::Gte => ComparisonOp::Gte,
+                    Token::Lte => ComparisonOp::Lte,
                 };
                 logical.clone().foldl(
                     op.then(logical).repeated(),
@@ -350,14 +362,14 @@ where
                         ctx.span(),
                     )
                 });
-            // "for" <name> "in" <expression> "then" <expression>
+            // "for" <expression> :<args>; <expression>
             let for_loop = just(Token::For)
-                .ignore_then(name_parser().map_with(|a, ctx| (a, ctx.span())))
-                .then_ignore(just(Token::In))
+                .ignore_then(expression.clone())
+                .then_ignore(just(Token::Colon))
+                .then(irrefutable_pattern())
+                .then_ignore(just(Token::Semicolon))
                 .then(expression.clone())
-                .then_ignore(just(Token::Then))
-                .then(expression.clone())
-                .map_with(|((name, iterator), code_block), ctx| {
+                .map_with(|((iterator, name), code_block), ctx| {
                     (
                         Expression::For(Box::new(For {
                             name,
@@ -367,16 +379,28 @@ where
                         ctx.span(),
                     )
                 });
+            let span = atom
+                .clone()
+                .then_ignore(just(Token::DoubleDot))
+                .then(atom.clone())
+                .map_with(|(start, end), ctx| {
+                    (
+                        Expression::Value(Value::Span(Some(Box::new(start)), Some(Box::new(end)))),
+                        ctx.span(),
+                    )
+                })
+                .labelled("span")
+                .as_context();
 
-            // Comparison ops (equal, not-equal) have equal precedence
             choice((
                 comp.labelled("line expression").as_context(),
                 r#match,
                 for_loop,
+                span,
             ))
             .boxed()
-        };
-        inline_expression.boxed()
+        }
+        .boxed()
     })
 }
 pub fn value<'tokens, 'src: 'tokens>() -> impl Parser<
@@ -401,6 +425,5 @@ pub fn value<'tokens, 'src: 'tokens>() -> impl Parser<
     .labelled("Boolean");
     let string =
         select! {Token::LiteralString(s) => Expression::Value(Value::String(s))}.labelled("String");
-    let span = select! {Token::Span(s) => Expression::Value(Value::Span(s.start, s.end))};
-    choice((number, bool, string, span))
+    choice((number, bool, string))
 }

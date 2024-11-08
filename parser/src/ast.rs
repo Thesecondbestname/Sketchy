@@ -42,7 +42,13 @@ pub enum Item {
 }
 
 #[derive(Debug, Clone)]
-pub struct Trait(pub String, pub Vec<Spanned<TraitFns>>);
+pub struct Generic(pub (Spanned<String>, Vec<Spanned<String>>));
+#[derive(Debug, Clone)]
+pub struct Trait(
+    pub Vec<Spanned<Generic>>,
+    pub String,
+    pub Vec<Spanned<TraitFns>>,
+);
 #[derive(Debug, Clone)]
 pub struct Import(pub Spanned<String>, pub Vec<Spanned<String>>);
 
@@ -68,7 +74,6 @@ pub struct FunctionDeclaration {
 pub struct EnumDeclaration {
     pub name: Spanned<String>,
     pub variants: Vec<Spanned<EnumVariantDeclaration>>,
-    pub impl_blocks: Vec<(Option<String>, Spanned<FunctionDeclaration>)>,
 }
 /// A variant of an enum that is currently declared. I.e. an arm.
 #[derive(Debug, Clone)]
@@ -107,7 +112,7 @@ pub enum Expression {
     Value(Value),
     Else(Box<Spanned<Self>>, Box<Spanned<Self>>),
     UnaryBool(Box<Spanned<Self>>),
-    UnaryMath(Box<Spanned<Self>>),
+    // UnaryMath(Box<Spanned<Self>>),
     MathOp(Box<Spanned<Self>>, MathOp, Box<Spanned<Self>>),
     Comparison(Box<Spanned<Self>>, ComparisonOp, Box<Spanned<Self>>),
     Binary(Box<Spanned<Self>>, BinaryOp, Box<Spanned<Self>>),
@@ -121,7 +126,7 @@ pub struct If {
 }
 #[derive(Debug, Clone)]
 pub struct For {
-    pub(crate) name: Spanned<String>,
+    pub(crate) name: Spanned<Pattern>,
     pub(crate) iterator: Spanned<Expression>,
     pub(crate) code_block: Spanned<Expression>,
 }
@@ -132,9 +137,11 @@ pub enum Value {
     String(String),
     Number(Number),
     Tuple(Vec<Spanned<Expression>>),
-    Char(char),
     Bool(bool),
-    Span(i32, Option<i32>),
+    Span(
+        Option<Box<Spanned<Expression>>>,
+        Option<Box<Spanned<Expression>>>,
+    ),
     Struct {
         name: Spanned<Ident>,
         fields: Spanned<Vec<(Spanned<String>, Spanned<Expression>)>>,
@@ -176,13 +183,11 @@ pub enum Type {
     String,
     Array(Box<Spanned<Type>>, i64),
     Tuple(Vec<Spanned<Type>>),
-    Char,
     FunctionType(
         // Spanned<String>,
         Spanned<Vec<Spanned<Self>>>,
         Option<Box<Spanned<Self>>>,
     ),
-    Span,
     Path(Spanned<Ident>),
 }
 #[derive(Debug, Clone)]
@@ -207,11 +212,11 @@ crate::impl_display!(Value, |s: &Value| match s {
     Value::Number(Number::Int(int)) => format!("{int}"),
     Value::Number(Number::Float(float)) => format!("{float}"),
     Value::Tuple(vals) => format!("({})", format_join(vals, ",").unwrap_or_default()),
-    Value::Char(char) => format!("'{char}'"),
     Value::Bool(bool) => format!("{bool}"),
     Value::Span(start, end) => format!(
-        "{start}..{}",
-        end.map(|x| x.to_string()).unwrap_or_default()
+        "{}..{}",
+        start.as_ref().map(|x| x.0.to_string()).unwrap_or_default(),
+        end.as_ref().map(|x| x.0.to_string()).unwrap_or_default()
     ),
     Value::Struct { name, fields } => format!(
         "{} {{{}}}",
@@ -264,7 +269,7 @@ crate::impl_display!(Expression, |s: &Expression| {
         Expression::Binary(a, op, b) => format!("({} {op} {})", a.0, b.0),
         Expression::Else(c, e) => format!("{} else ({})", c.0, e.0),
         Expression::UnaryBool(e) => format!("!{}", e.0),
-        Expression::UnaryMath(e) => format!("-{}", e.0),
+        // Expression::UnaryMath(e) => format!("-{}", e.0),
         Expression::Unit => "Dis weird aah heal".to_owned(),
         Expression::Match { condition, arms } => format!(
             "match {} {{{}}}",
@@ -274,7 +279,6 @@ crate::impl_display!(Expression, |s: &Expression| {
         ),
         Expression::TopLvlExpr(_) => "Illegal toplvl expresssion".to_string(),
         Expression::For(_for) => format!("{_for}"),
-        // Expression::List(list) => format!("[{}]", format_join(&list, ", ").unwrap_or_default()),
     }
 });
 
@@ -312,14 +316,12 @@ crate::impl_display!(Type, |s: &Type| {
         Type::String => "String".to_owned(),
         Type::Array(ty, size) => format!("[{};{size}]", ty.0),
         Type::Tuple(t) => format!("({})", format_join(t, ",").unwrap_or_default()),
-        Type::Char => "char".to_owned(),
-        Type::Span => "span".to_owned(),
         Type::Path(p) => format!("{}", p.0),
         Type::FunctionType(b, c) => c.as_ref().map_or_else(
             || format!("fn ({})", format_join(&b.0, ",").unwrap_or_default()),
             |a| {
                 format!(
-                    "fn ({}) -> {}",
+                    "fn({}) -> {}",
                     format_join(&b.0, ", ").unwrap_or_default(),
                     a.0
                 )
@@ -389,16 +391,9 @@ crate::impl_display!(Item, |s: &Item| {
                 imp.0 .0
             )
         }
-        Item::Enum((
-            EnumDeclaration {
-                name,
-                variants,
-                impl_blocks,
-            },
-            _,
-        )) => {
+        Item::Enum((EnumDeclaration { name, variants }, _)) => {
             format!(
-                "enum {} {{{} {:?}}}",
+                "enum {} {{{}}}",
                 name.0,
                 variants.iter().fold(String::new(), |acc, (v, _)| acc
                     + &format!(
@@ -406,13 +401,15 @@ crate::impl_display!(Item, |s: &Item| {
                         v.name,
                         format_join(&v.fields, ",").unwrap_or_default()
                     )),
-                impl_blocks
             )
         }
         Item::Struct((struct_, _)) => format!("{struct_}"),
         Item::Assingment((decl, _)) => format!("let {} = {};", decl.0 .0, decl.1 .0),
-        Item::Trait((Trait(a, b), _)) => format!(
-            "trait {a} {{{}}}",
+        Item::Trait((Trait(c, a, b), _)) => format!(
+            "trait{} {a} {{{}}}",
+            format_join(c, ",")
+                .map(|a| "<".to_owned() + &a + ">")
+                .unwrap_or_default(),
             format_join(
                 &b.iter()
                     .map(|a| (
@@ -450,6 +447,15 @@ crate::impl_display!(Name, |s: &Name| {
         Name::Name(name) => name.to_string(),
         Name::Underscore => "_".to_string(),
     }
+});
+crate::impl_display!(Generic, |s: &Generic| {
+    format!(
+        "{}{}",
+        s.0 .0 .0,
+        format_join(&s.0 .1, "+")
+            .map(|a| ": ".to_owned() + &a)
+            .unwrap_or_default()
+    )
 });
 crate::impl_display!(Pattern, |s: &Pattern| {
     match s {
