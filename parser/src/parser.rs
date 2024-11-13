@@ -1,4 +1,4 @@
-use crate::ast::{Block, Expression, FunctionDeclaration, Item};
+use crate::ast::{Expression, Item, Symbols};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned};
 use crate::error::{errors_to_diagnostics, Diagnostic, ParseError, Pattern};
 use crate::expression::expression;
@@ -16,26 +16,66 @@ pub fn programm<'tokens, 'src: 'tokens>() -> impl Parser<
     Spanned<Expression>,        // Output
     Error<'tokens>,             // Error Type)
 > + Clone {
-        // import, function, statement
-        recursive(|block| {
-            let block_element = item(expression(block.clone()));
-            block_element.map_with(|expr, ctx| {
-                (expr, ctx.span())})
-        })
-        .validate(|it, ctx, emmit| {
-            if let Item::TopLevelExprError(_) = it.0 {
-                emmit.emit(ParseError::expected_found_help(
-                    ctx.span(),
-                    vec![Pattern::Label("Top level Item")],
-                    Some("Expression".to_owned()),
-                    "Top Level expressions are not allowed".to_owned(),
-                ));
+    // import, function, statement
+    recursive(|block| {
+        let block_element = item(expression(block.clone()));
+        block_element.map_with(|expr, ctx| (expr, ctx.span()))
+    })
+    .validate(|it, ctx, emmit| {
+        if let Item::TopLevelExprError(_) = it.0 {
+            emmit.emit(ParseError::expected_found_help(
+                ctx.span(),
+                vec![Pattern::Label("Top level Item")],
+                Some("Expression".to_owned()),
+                "Top Level expressions are not allowed".to_owned(),
+            ));
+        }
+        it
+    })
+    .repeated()
+    .collect::<Vec<_>>()
+    .map_with(|items, ctx| {
+        let mut enums = vec![];
+        let mut structs = vec![];
+        let mut vars = vec![];
+        let mut fns = vec![];
+        // let mut imports = HashSet::new();
+        for (item, _) in &items {
+            match item {
+                Item::Function((a, _)) => {
+                    fns.push(a.name.0.clone());
+                }
+                Item::Import(_) => todo!(),
+                Item::Enum((e, _)) => {
+                    enums.push(e.name.0.clone());
+                }
+                Item::Struct((s, _)) => {
+                    structs.push(s.name.0.clone());
+                }
+                Item::Assingment((v, _)) => {
+                    for var in v.0 .0.get_names() {
+                        vars.push(var);
+                    }
+                }
+                Item::Trait(_) => todo!(),
+                _ => (),
             }
-            it
-        })
-        .repeated()
-        .collect::<Vec<_>>()
-        .map_with(|items, ctx| (Expression::Block(items), ctx.span()))
+        }
+        (
+            Expression::Block(
+                items,
+                Symbols {
+                    fns,
+                    traits: vec![],
+                    structs,
+                    enums,
+                    imports: vec![],
+                    vars,
+                },
+            ),
+            ctx.span(),
+        )
+    })
 }
 // ----- STATES ----
 #[derive(Default, Clone)]
@@ -64,7 +104,7 @@ impl<'i, I, L: Default, P: Default> SketchyParserBuilder<'i, I, L, P> {
         self,
         inp: impl Into<String>,
         src_name: &'i str,
-    ) -> SketchyParserBuilder<Initialized, L, P> {
+    ) -> SketchyParserBuilder<'i, Initialized, L, P> {
         SketchyParserBuilder {
             name: src_name,
             input: Initialized(inp.into()),

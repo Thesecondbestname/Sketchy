@@ -9,7 +9,7 @@ edition = "2021"
 anyhow = "1.0.80"
 ariadne = "0.4.1"
 displaydoc = "*"
-logos = "0.13.0"
+logos = "*"
 thiserror = "1.0.61"
 visibility = "0.1.1"
 

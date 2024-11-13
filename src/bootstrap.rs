@@ -9,9 +9,9 @@ pub fn check_version() -> Result<String, anyhow::Error> {
     let current_exe = env::current_exe()?;
     let _current_exe_name = current_exe.file_name().unwrap();
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
     let version_cmd = "dumpbin /headers";
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(target_os = "windows"))]
     let version_cmd = "objdump -p";
 
     let output = Command::new(version_cmd).arg(current_exe).output()?;
@@ -28,42 +28,42 @@ pub fn check_version() -> Result<String, anyhow::Error> {
             }
         }
     } else {
-        println!("No version information found");
+        error!("No version information found");
     }
     Err(anyhow!("Failed to check the installed"))
 }
-pub fn copy_to_path() -> anyhow::Result<()> {
-    let current_exe = env::current_exe()?;
-    let Some(current_exe_name) = current_exe.file_name() else {
-        return Err(anyhow::Error::msg("Failed to get current exe file"));
-    };
+// pub fn copy_to_path() -> anyhow::Result<()> {
+//     let current_exe = env::current_exe()?;
+//     let Some(current_exe_name) = current_exe.file_name() else {
+//         return Err(anyhow::Error::msg("Failed to get current exe file"));
+//     };
 
-    #[cfg(not(target_os = "linux"))]
-    let path_var = "%PATH%";
-    #[cfg(target_os = "linux")]
-    let path_var = "PATH";
+//     #[cfg(not(target_os = "linux"))]
+//     let path_var = "%PATH%";
+//     #[cfg(target_os = "linux")]
+//     let path_var = "PATH";
 
-    let path_var_value = env::var(path_var)?;
-    let new_path = format!(
-        "{}:{}",
-        current_exe
-            .parent()
-            .ok_or_else(|| anyhow!("Failed to get parent directory"))?
-            .to_str()
-            .ok_or_else(|| anyhow!("Failed to convert file name to valid unicode"))?,
-        path_var_value
-    );
-    env::set_var(path_var, new_path);
-    println!(
-        "Successfully added {} to the {} environment variable.",
-        current_exe_name
-            .to_str()
-            .ok_or_else(|| anyhow!("Failed to convert file name to valid unicode"))?,
-        path_var
-    );
-    std::fs::remove_file(current_exe)?;
-    Ok(())
-}
+//     let path_var_value = env::var(path_var)?;
+//     let new_path = format!(
+//         "{}:{}",
+//         current_exe
+//             .parent()
+//             .ok_or_else(|| anyhow!("Failed to get parent directory"))?
+//             .to_str()
+//             .ok_or_else(|| anyhow!("Failed to convert file name to valid unicode"))?,
+//         path_var_value
+//     );
+//     env::set_var(path_var, new_path);
+//     debug!(
+//         "Successfully added {} to the {} environment variable.",
+//         current_exe_name
+//             .to_str()
+//             .ok_or_else(|| anyhow!("Failed to convert file name to valid unicode"))?,
+//         path_var
+//     );
+//     std::fs::remove_file(current_exe)?;
+//     Ok(())
+// }
 fn create_project_file(
     path: &PathBuf,
     name: &String,
@@ -88,7 +88,7 @@ pub fn create_env(name: &String, graphics: bool) -> Result<(), String> {
                 fs::create_dir(a.join(name))
                     .inspect(|()| trace!("Successfully created project root"))
                     .map_or_else(
-                        |_| Err(format!("Failed to create project root {name}", )),
+                        |_| Err(format!("Failed to create project root {name}",)),
                         |()| Ok(a.join(name)),
                     )
             },

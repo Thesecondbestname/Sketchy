@@ -1,9 +1,6 @@
 use crate::convenience_types::Spanned;
 use crate::format_join;
 
-#[derive(Debug, Clone)]
-pub struct Block(pub Vec<Spanned<Item>>);
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ident(pub Vec<Spanned<String>>);
 
@@ -41,6 +38,15 @@ pub enum Item {
     TopLevelExprError(Expression),
 }
 
+#[derive(Debug, Clone)]
+pub struct Symbols {
+    pub(crate) fns: Vec<String>,
+    pub(crate) traits: Vec<String>,
+    pub(crate) structs: Vec<String>,
+    pub(crate) enums: Vec<String>,
+    pub(crate) imports: Vec<String>,
+    pub(crate) vars: Vec<String>,
+}
 #[derive(Debug, Clone)]
 pub struct Generic(pub (Spanned<String>, Vec<Spanned<String>>));
 #[derive(Debug, Clone)]
@@ -108,7 +114,7 @@ pub enum Expression {
     Ident(Ident),
     FunctionCall(Box<Spanned<Self>>, Vec<Spanned<Self>>),
     MethodCall(Box<Spanned<Self>>, Ident, Vec<Spanned<Self>>),
-    Block(Vec<Spanned<Item>>),
+    Block(Vec<Spanned<Item>>, Symbols),
     Value(Value),
     Else(Box<Spanned<Self>>, Box<Spanned<Self>>),
     UnaryBool(Box<Spanned<Self>>),
@@ -261,8 +267,11 @@ crate::impl_display!(Expression, |s: &Expression| {
                 format_join(args, ",").unwrap_or_default()
             )
         }
-        Expression::Block(block) => format!("{}", block.iter()
-        .fold(String::new(), |acc, elem| acc + &format!("{}", elem.0))
+        Expression::Block(block, _) => format!(
+            "{}",
+            block
+                .iter()
+                .fold(String::new(), |acc, elem| acc + &format!("{}", elem.0))
         ),
         Expression::If(if_) => format!("{if_}"),
         Expression::Comparison(lhs, op, rhs) => format!("({} {op} {})", lhs.0, rhs.0),
@@ -282,13 +291,6 @@ crate::impl_display!(Expression, |s: &Expression| {
     }
 });
 
-crate::impl_display!(Block, |s: &Block| {
-    if s.0.is_empty() {
-        return String::new();
-    }
-    s.0.iter()
-        .fold(String::new(), |acc, elem| acc + &format!("{}", elem.0))
-});
 crate::impl_display!(If, |s: &If| {
     let If {
         condition,
@@ -504,11 +506,17 @@ impl Pattern {
             Pattern::Name(Name::Name(n)) => vec![n.to_string()],
             Pattern::Name(name) => vec![],
             Pattern::Value(_) => panic!("Can not get name of a value pattern. Internal error"),
-            Pattern::Enum(_, vec) => vec.iter().map(|a|a.0.get_names()).flatten().collect(),
+            Pattern::Enum(_, vec) => vec.iter().map(|a| a.0.get_names()).flatten().collect(),
             Pattern::Struct(_, vec) => todo!(),
-            Pattern::Tuple(vec) => vec.iter().map(|a|a.0.get_names()).flatten().collect(),
-            Pattern::Array(vec, Name::Name(g)) => {let mut x: Vec<_> = vec.iter().map(|a|a.0.get_names()).flatten().collect(); x.push(g.to_string()); x},
-            Pattern::Array(vec, name) => {todo!()}
+            Pattern::Tuple(vec) => vec.iter().map(|a| a.0.get_names()).flatten().collect(),
+            Pattern::Array(vec, Name::Name(g)) => {
+                let mut x: Vec<_> = vec.iter().map(|a| a.0.get_names()).flatten().collect();
+                x.push(g.to_string());
+                x
+            }
+            Pattern::Array(vec, name) => {
+                todo!()
+            }
         }
     }
 }

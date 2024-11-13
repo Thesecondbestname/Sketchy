@@ -33,7 +33,8 @@ impl LexResult {
 }
 
 #[derive(Logos, Debug, PartialEq, Clone, Hash)]
-#[logos(skip r"[ \t\f]+|(?://.*\n|/\*[\s\S]*\*/)")]
+#[logos(skip r"[ \t\f]+|(?://[^\n]*\n)")]
+// #[logos(skip r"[ \t\f]+|(?://[^\n]*\n|/\*[\s\S]*\*/)")]
 // #[cfg_attr(test, visibility::make(pub(crate)))]
 pub enum Token {
     #[token("+")]

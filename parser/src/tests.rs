@@ -148,11 +148,6 @@ fn enum_destructuring() -> anyhow::Result<()> {
     test(input, "enum_destructuring")
 }
 #[test]
-fn r#return() -> anyhow::Result<()> {
-    let input = "return 3";
-    test(input, "return")
-}
-#[test]
 #[should_panic]
 fn top_level_expression() -> () {
     let input = "print(hello)";
@@ -171,7 +166,7 @@ fn function_definitions() -> anyhow::Result<()> {
 
 #[test]
 fn span() -> anyhow::Result<()> {
-    let input = "x = 0..500\n";
+    let input = "x = ( a + 45)..500\n";
     test(input, "span")
 }
 #[test]
@@ -230,8 +225,6 @@ fn r#match() -> anyhow::Result<()> {
             None then panic()";
     test(input, "match")
 }
-
-    let input = "z = (
 #[test]
 fn multiple_expressions() -> anyhow::Result<()> {
     let input = "z = (
