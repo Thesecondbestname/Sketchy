@@ -1,8 +1,14 @@
+use std::collections::HashSet;
+
 use crate::convenience_types::Spanned;
 use crate::format_join;
+use crate::interner::StrId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Ident(pub Vec<Spanned<String>>);
+pub struct Ident(pub Vec<Spanned<StrId>>);
+
+#[derive(Debug, Clone)]
+pub struct Programm(Vec<Spanned<Item>>, Symbols);
 
 #[derive(Debug, Clone)]
 pub struct Impl {
@@ -19,9 +25,9 @@ pub enum Pattern {
     Tuple(Vec<Spanned<Pattern>>),
     Array(Vec<Spanned<Pattern>>, Name),
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Name {
-    Name(String),
+    Name(StrId),
     Underscore,
 }
 
@@ -40,63 +46,59 @@ pub enum Item {
 
 #[derive(Debug, Clone)]
 pub struct Symbols {
-    pub(crate) fns: Vec<String>,
-    pub(crate) traits: Vec<String>,
-    pub(crate) structs: Vec<String>,
-    pub(crate) enums: Vec<String>,
-    pub(crate) imports: Vec<String>,
-    pub(crate) vars: Vec<String>,
+    pub(crate) fns: HashSet<StrId>,
+    pub(crate) traits: HashSet<StrId>,
+    pub(crate) structs: HashSet<StrId>,
+    pub(crate) enums: HashSet<StrId>,
+    pub(crate) imports: HashSet<StrId>,
+    pub(crate) vars: HashSet<StrId>,
 }
 #[derive(Debug, Clone)]
-pub struct Generic(pub (Spanned<String>, Vec<Spanned<String>>));
+pub struct Generic(pub (Spanned<StrId>, Vec<Spanned<StrId>>));
 #[derive(Debug, Clone)]
 pub struct Trait(
     pub Vec<Spanned<Generic>>,
-    pub String,
+    pub StrId,
     pub Vec<Spanned<TraitFns>>,
 );
 #[derive(Debug, Clone)]
-pub struct Import(pub Spanned<String>, pub Vec<Spanned<String>>);
+pub struct Import(pub Spanned<StrId>, pub Vec<Spanned<StrId>>);
 
 #[derive(Debug, Clone)]
-pub struct TraitFns(
-    pub String,
-    pub Vec<Spanned<Type>>,
-    pub Option<Spanned<Type>>,
-);
+pub struct TraitFns(pub StrId, pub Vec<Spanned<Type>>, pub Option<Spanned<Type>>);
 #[derive(Debug, Clone)]
 pub struct VariableDeclaration(pub Spanned<Pattern>, pub Spanned<Expression>);
 #[derive(Debug, Clone)]
 /// Here is where a function is defined
 pub struct FunctionDeclaration {
-    pub name: Spanned<String>,
+    pub name: Spanned<StrId>,
     pub return_type: Spanned<Type>,
-    pub arguments: Vec<Spanned<(Option<Spanned<Type>>, Spanned<String>)>>,
+    pub arguments: Vec<Spanned<(Option<Spanned<Type>>, Spanned<StrId>)>>,
     pub body: Spanned<Expression>,
 }
 
 #[derive(Debug, Clone)]
 /// Where the enum is declared and not where it is constructed
 pub struct EnumDeclaration {
-    pub name: Spanned<String>,
+    pub name: Spanned<StrId>,
     pub variants: Vec<Spanned<EnumVariantDeclaration>>,
 }
 /// A variant of an enum that is currently declared. I.e. an arm.
 #[derive(Debug, Clone)]
 pub struct EnumVariantDeclaration {
-    pub name: String,
+    pub name: StrId,
     pub fields: Vec<Spanned<Type>>,
 }
 #[derive(Debug, Clone)]
 /// The one where the struct is firstly defined
 pub struct StructDeclaration {
-    pub name: Spanned<String>,
+    pub name: Spanned<StrId>,
     pub fields: Vec<Spanned<StructField>>,
-    pub impl_blocks: Vec<(Option<String>, Spanned<FunctionDeclaration>)>,
+    pub impl_blocks: Vec<(Option<StrId>, Spanned<FunctionDeclaration>)>,
 }
 #[derive(Debug, Clone)]
 pub struct StructField {
-    pub name: Spanned<String>,
+    pub name: Spanned<StrId>,
     pub r#type: Spanned<Type>,
 }
 
@@ -118,7 +120,6 @@ pub enum Expression {
     Value(Value),
     Else(Box<Spanned<Self>>, Box<Spanned<Self>>),
     UnaryBool(Box<Spanned<Self>>),
-    // UnaryMath(Box<Spanned<Self>>),
     MathOp(Box<Spanned<Self>>, MathOp, Box<Spanned<Self>>),
     Comparison(Box<Spanned<Self>>, ComparisonOp, Box<Spanned<Self>>),
     Binary(Box<Spanned<Self>>, BinaryOp, Box<Spanned<Self>>),
@@ -150,7 +151,7 @@ pub enum Value {
     ),
     Struct {
         name: Spanned<Ident>,
-        fields: Spanned<Vec<(Spanned<String>, Spanned<Expression>)>>,
+        fields: Spanned<Vec<(Spanned<StrId>, Spanned<Expression>)>>,
     },
     Enum {
         variant: Spanned<Ident>,
@@ -190,8 +191,7 @@ pub enum Type {
     Array(Box<Spanned<Type>>, i64),
     Tuple(Vec<Spanned<Type>>),
     FunctionType(
-        // Spanned<String>,
-        Spanned<Vec<Spanned<Self>>>,
+        Spanned<Vec<(Spanned<StrId>, Spanned<Self>)>>,
         Option<Box<Spanned<Self>>>,
     ),
     Path(Spanned<Ident>),
@@ -320,13 +320,26 @@ crate::impl_display!(Type, |s: &Type| {
         Type::Tuple(t) => format!("({})", format_join(t, ",").unwrap_or_default()),
         Type::Path(p) => format!("{}", p.0),
         Type::FunctionType(b, c) => c.as_ref().map_or_else(
-            || format!("fn ({})", format_join(&b.0, ",").unwrap_or_default()),
-            |a| {
-                format!(
-                    "fn({}) -> {}",
-                    format_join(&b.0, ", ").unwrap_or_default(),
-                    a.0
-                )
+            || {
+                String::new()
+                    + "fn ("
+                    + &b.0
+                        .iter()
+                        .map(|a| format!("{}: {}", a.0 .0, a.1 .0))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                    + ")"
+            },
+            |t| {
+                String::new()
+                    + "fn ("
+                    + &b.0
+                        .iter()
+                        .map(|a| format!("{}: {}", a.0 .0, a.1 .0))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                    + ")"
+                    + &t.0.to_string()
             },
         ),
     }
@@ -344,7 +357,9 @@ crate::impl_display!(StructDeclaration, |s: &StructDeclaration| {
         s.impl_blocks.iter().fold(String::new(), |acc, a| acc
             + &format!(
                 "impl {}{}{{{}}}",
-                a.0.clone().map(|a| a + " for ").unwrap_or_default(),
+                a.0.clone()
+                    .map(|a| a.as_str().to_owned() + " for ")
+                    .unwrap_or_default(),
                 s.name.0,
                 a.1 .0
             ))
@@ -383,6 +398,13 @@ crate::impl_display!(FunctionDeclaration, |s: &FunctionDeclaration| {
         s.body.0
     )
 });
+crate::impl_display!(Programm, |s: &Programm| {
+    format!(
+        "{}",
+        s.0.iter()
+            .fold(String::new(), |acc, elem| acc + &format!("{}", elem.0))
+    )
+});
 crate::impl_display!(Item, |s: &Item| {
     match s {
         Item::Function(r#fn) => r#fn.0.to_string(),
@@ -390,7 +412,7 @@ crate::impl_display!(Item, |s: &Item| {
             format!(
                 "use {} as {};",
                 format_join(&imp.1, "::").unwrap_or_default(),
-                imp.0 .0
+                imp.0 .0.as_str()
             )
         }
         Item::Enum((EnumDeclaration { name, variants }, _)) => {
@@ -500,22 +522,57 @@ impl Number {
         Number::Float(num.into())
     }
 }
-impl Pattern {
-    pub fn get_names(&self) -> Vec<String> {
+impl Symbols {
+    fn combine(&self) -> HashSet<StrId> {
+        let mut fns = self.fns.clone();
+        fns.extend(self.traits.iter().map(|a| a.clone()));
+        fns.extend(self.structs.iter().map(|a| a.clone()));
+        fns.extend(self.enums.iter().map(|a| a.clone()));
+        fns.extend(self.imports.iter().map(|a| a.clone()));
+        fns.extend(self.vars.iter().map(|a| a.clone()));
+        fns
+    }
+}
+impl Expression {
+    pub fn get_idents(&self) -> HashSet<StrId> {
         match self {
-            Pattern::Name(Name::Name(n)) => vec![n.to_string()],
-            Pattern::Name(name) => vec![],
-            Pattern::Value(_) => panic!("Can not get name of a value pattern. Internal error"),
-            Pattern::Enum(_, vec) => vec.iter().map(|a| a.0.get_names()).flatten().collect(),
-            Pattern::Struct(_, vec) => todo!(),
-            Pattern::Tuple(vec) => vec.iter().map(|a| a.0.get_names()).flatten().collect(),
-            Pattern::Array(vec, Name::Name(g)) => {
-                let mut x: Vec<_> = vec.iter().map(|a| a.0.get_names()).flatten().collect();
-                x.push(g.to_string());
-                x
+            Self::Block(a, b) => b.combine(),
+            _ => HashSet::new(),
+        }
+    }
+}
+impl Pattern {
+    pub fn get_names(&self) -> Option<Vec<StrId>> {
+        match self {
+            Pattern::Name(Name::Name(n)) => Some(vec![*n]),
+            Pattern::Name(_) => None,
+            Pattern::Value(_) => panic!("[INTERNAL ERROR] Can not get name of a value pattern"),
+            Pattern::Enum(_, vec) => {
+                Some(vec.iter().flat_map(|a| a.0.get_names()).flatten().collect())
             }
-            Pattern::Array(vec, name) => {
-                todo!()
+            Pattern::Struct(_, vec) => Some(
+                vec.iter()
+                    .flat_map(|(a, b)| {
+                        b.0.get_names().map(|mut v| {
+                            if let Name::Name(c) = &a.0 {
+                                v.push(*c)
+                            };
+                            v
+                        })
+                    })
+                    .flatten()
+                    .collect(),
+            ),
+            Pattern::Tuple(vec) => {
+                Some(vec.iter().flat_map(|a| a.0.get_names()).flatten().collect())
+            }
+            Pattern::Array(vec, Name::Name(g)) => {
+                let mut x: Vec<_> = vec.iter().flat_map(|a| a.0.get_names()).flatten().collect();
+                x.push(*g);
+                Some(x)
+            }
+            Pattern::Array(vec, _) => {
+                Some(vec.iter().flat_map(|a| a.0.get_names()).flatten().collect())
             }
         }
     }

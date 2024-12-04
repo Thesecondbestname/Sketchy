@@ -1,5 +1,5 @@
 use crate::ast::{self, Ident, Name, Pattern, Type};
-use crate::convenience_types::{Error, ParserInput, Spanned};
+use crate::convenience_types::{Error, ParserInput, Spanned, StrId};
 use crate::expression::value;
 use crate::{ParseError, Token};
 use chumsky::prelude::*;
@@ -7,7 +7,7 @@ use chumsky::prelude::*;
 pub fn name_parser<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
-    String,                     // Output
+    StrId,                      // Output
     Error<'tokens>,             // Error Type
 > + Clone {
     select! { Token::Ident(ident) => ident }.labelled("Name")
@@ -26,17 +26,17 @@ pub fn generic_parser<'tokens, 'src: 'tokens>() -> impl Parser<
                 .separated_by(just(Token::Plus))
                 .collect(),
         )
-        .map_with(|a, ctx| ast::Generic(a))
+        .map(|a| ast::Generic(a))
 }
 pub fn type_name_parser<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
-    String,                     // Output
+    StrId,                      // Output
     Error<'tokens>,             // Error Type
 > + Clone {
     select! { Token::Ident(ident) => ident }
         .validate(|v, ctx, emitter| {
-            if !v.chars().next().is_some_and(char::is_uppercase) {
+            if !v.as_str().chars().next().is_some_and(char::is_uppercase) {
                 emitter.emit(ParseError::expected_found_help(
                     ctx.span(),
                     vec![crate::error::Pattern::Label("Type name")],
@@ -56,7 +56,7 @@ pub fn ident_parser_fallback<'tokens, 'src: 'tokens>() -> impl Parser<
 > + Clone {
     select! { Token::Ident(ident) => ident }
         .validate(|v, ctx, emitter| {
-            if !v.chars().next().is_some_and(char::is_lowercase) {
+            if !v.as_str().chars().next().is_some_and(char::is_lowercase) {
                 emitter.emit(ParseError::expected_found_help(
                     ctx.span(),
                     vec![crate::error::Pattern::Label("Identifier")],
@@ -70,7 +70,7 @@ pub fn ident_parser_fallback<'tokens, 'src: 'tokens>() -> impl Parser<
         .separated_by(just(Token::DoubleColon))
         .at_least(1)
         .collect()
-        .map(ast::Ident)
+        .map(|a| ast::Ident(a))
         .labelled("Identifier")
 }
 /// ONLY USE WHEN IDENT_PARSER IS NOT VALID
@@ -82,7 +82,7 @@ pub fn type_ident_parser_fallback<'tokens, 'src: 'tokens>() -> impl Parser<
 > + Clone {
     select! { Token::Ident(ident) => ident }
         .validate(|v, ctx, emitter| {
-            if !v.chars().next().is_some_and(char::is_uppercase) {
+            if !v.as_str().chars().next().is_some_and(char::is_uppercase) {
                 emitter.emit(ParseError::expected_found_help(
                     ctx.span(),
                     vec![crate::error::Pattern::Label("Type ident")],
@@ -105,7 +105,7 @@ pub fn type_ident_parser<'tokens, 'src: 'tokens>() -> impl Parser<
     Ident,                      // Output
     Error<'tokens>,             // Error Type
 > + Clone {
-    select! { Token::Ident(ident) if ident.chars().next().is_some_and(char::is_uppercase) => ident }
+    select! { Token::Ident(ident) if ident.as_str().chars().next().is_some_and(char::is_uppercase) => ident }
         .map_with(|a, ctx| (a, ctx.span()))
         .separated_by(just(Token::DoubleColon))
         .at_least(1)
@@ -155,15 +155,17 @@ pub fn type_parser<'tokens, 'src: 'tokens>() -> impl Parser<
                     .or_not(),
             )
             .then(
-                r#type
-                    .clone()
+                name_parser()
                     .map_with(|a, ctx| (a, ctx.span()))
+                    .then_ignore(just(Token::Hashtag))
+                    .then(r#type.clone().map_with(|a, ctx| (a, ctx.span())))
                     .separated_by(just(Token::Comma).then(separator()))
-                    .collect()
-                    .delimited_by(just(Token::Colon), just(Token::Semicolon))
-                    .map_with(|a, ctx| (a, ctx.span())),
+                    .collect::<Vec<_>>()
+                    .map_with(|a, ctx| (a, ctx.span()))
+                    .delimited_by(just(Token::Colon), just(Token::Semicolon)),
             )
-            .map(|(ret, args)| Type::FunctionType(args, ret));
+            .map(|(ret, args)| Type::FunctionType(args, ret))
+            .labelled("function type");
         choice((
             tuple,
             primitives,
@@ -244,13 +246,10 @@ where
             Error<'tokens>,             // Error Type
         > + Clone,
 {
-    let nuthing = select! { Token::Ident(ident) if ident == "_" =>
+    let nuthing = select! { Token::Ident(ident) if ident.as_str() == "_" =>
         Name::Underscore
     };
-    let name_pattern = choice((
-        nuthing,
-        name_parser().map(|a| Name::Name(a))
-    ));
+    let name_pattern = choice((nuthing, name_parser().map(|a| Name::Name(a))));
     let tuple_destructure = pattern
         .clone()
         .separated_by(just(Token::Comma))

@@ -1,11 +1,10 @@
 #![allow(clippy::too_many_lines)]
-use std::collections::HashSet;
 
-use crate::ast::{BinaryOp, ComparisonOp, Expression, For, If, Item, MathOp, Number, Value, Symbols};
+use crate::ast::{BinaryOp, ComparisonOp, Expression, Item, MathOp, Number, Symbols, Value};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned};
 use crate::util_parsers::{
-    extra_delimited, ident_parser_fallback, irrefutable_pattern, name_parser, refutable_pattern,
-    separator, type_ident_parser, type_ident_parser_fallback,
+    extra_delimited, ident_parser_fallback, name_parser, refutable_pattern, separator,
+    type_ident_parser, type_ident_parser_fallback,
 };
 use crate::Token;
 use chumsky::prelude::*;
@@ -24,33 +23,50 @@ where
     let ident = ident_parser_fallback();
     let delim_block = extra_delimited(stmt.repeated().collect::<Vec<_>>())
         .map(|items| {
-            let mut enums = vec![];
-            let mut structs = vec![];
-            let mut vars = vec![];
-            let mut fns = vec![];
-            // let mut imports = HashSet::new();
+            use crate::convenience_types::StrId;
+            use std::collections::HashSet;
+            let mut enums = HashSet::new();
+            let mut structs = HashSet::new();
+            let mut vars = HashSet::new();
+            let mut fns = HashSet::new();
+            let mut imports = HashSet::new();
+            let mut traits = HashSet::new();
             for (item, _) in &items {
                 match item {
                     Item::Function((a, _)) => {
-                        fns.push(a.name.0.clone());
+                        fns.insert(a.name.0.clone());
                     }
-                    Item::Import(_) => todo!(),
+                    Item::Import(a) => {
+                        imports.insert(a.0 .0 .0.clone());
+                    }
                     Item::Enum((e, _)) => {
-                        enums.push(e.name.0.clone());
+                        enums.insert(e.name.0.clone());
                     }
                     Item::Struct((s, _)) => {
-                        structs.push(s.name.0.clone());
+                        structs.insert(s.name.0.clone());
                     }
                     Item::Assingment((v, _)) => {
-                        for var in v.0 .0.get_names() {
-                            vars.push(var);
+                        for var in v.0 .0.get_names().unwrap_or_default() {
+                            vars.insert(StrId::from(var));
                         }
                     }
-                    Item::Trait(_) => todo!(),
+                    Item::Trait(a) => {
+                        traits.insert(a.0 .1.clone());
+                    }
                     _ => (),
                 }
-            };
-            Expression::Block(items, Symbols { fns, traits: vec![], structs, enums, imports: vec![], vars })
+            }
+            Expression::Block(
+                items,
+                Symbols {
+                    fns,
+                    traits,
+                    structs,
+                    enums,
+                    imports,
+                    vars,
+                },
+            )
         })
         .labelled("Code block");
 
@@ -132,6 +148,7 @@ where
                 [(Token::Lbracket, Token::Rbracket)],
                 |span| (Expression::ParserError, span),
             )))
+            .boxed()
             .labelled("Expression Block")
             .as_context());
 
@@ -186,6 +203,7 @@ where
                     )
                 },
             )
+            .boxed()
             .labelled("method call");
 
         let op = just(Token::Bang);
@@ -231,6 +249,7 @@ where
                     span.into(),
                 )
             })
+            .boxed()
             .labelled("sum")
             .as_context();
 
@@ -367,42 +386,43 @@ where
                 )
             });
         // "for" <expression> :<args>; <expression>
-        let for_loop = just(Token::For)
-            .ignore_then(expression.clone())
-            .then_ignore(just(Token::Colon))
-            .then(irrefutable_pattern())
-            .then_ignore(just(Token::Semicolon))
-            .then(expression.clone())
-            .map_with(|((iterator, name), code_block), ctx| {
-                (
-                    Expression::For(Box::new(For {
-                        name,
-                        iterator,
-                        code_block,
-                    })),
-                    ctx.span(),
-                )
-            });
-        let span = comp
-            .clone()
-            .boxed()
-            .then_ignore(just(Token::DoubleDot))
-            .then(comp.clone())
-            .map_with(|(start, end), ctx| {
-                (
-                    Expression::Value(Value::Span(Some(Box::new(start)), Some(Box::new(end)))),
-                    ctx.span(),
-                )
-            })
-            .labelled("span")
-            .as_context();
+        // let for_loop = just(Token::For)
+        //     .ignore_then(expression.clone())
+        //     .then_ignore(just(Token::Colon))
+        //     .then(irrefutable_pattern())
+        //     .then_ignore(just(Token::Semicolon))
+        //     .then(expression.clone())
+        //     .map_with(|((iterator, name), code_block), ctx| {
+        //         (
+        //             Expression::For(Box::new(For {
+        //                 name,
+        //                 iterator,
+        //                 code_block,
+        //             })),
+        //             ctx.span(),
+        //         )
+        //     });
+        // let span = comp
+        //     .clone()
+        //     .boxed()
+        //     .then_ignore(just(Token::DoubleDot))
+        //     .then(comp.clone())
+        //     .map_with(|(start, end), ctx| {
+        //         (
+        //             Expression::Value(Value::Span(Some(Box::new(start)), Some(Box::new(end)))),
+        //             ctx.span(),
+        //         )
+        //     })
+        //     .labelled("span")
+        //     .as_context();
 
         choice((
-            span,
+            // span,
             comp.labelled("line expression").as_context().boxed(),
-            r#match,
-            for_loop,
+            r#match.boxed(),
+            // for_loop,
         ))
+        .boxed()
     })
 }
 pub fn value<'tokens, 'src: 'tokens>() -> impl Parser<

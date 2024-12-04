@@ -1,13 +1,9 @@
 use crate::ast::{Expression, Item, Symbols};
-use crate::convenience_types::{Error, ParserInput, Span, Spanned};
-use crate::error::{errors_to_diagnostics, Diagnostic, ParseError, Pattern};
-use crate::expression::expression;
-use crate::format_join;
-use crate::item::item;
-use crate::lexer::{lex_sketchy_program, Lex, LexError};
-use crate::span::SourceId;
+use crate::convenience_types::{Error, ParserInput, Span, Spanned, StrId};
+use crate::error::Diagnostic;
+use crate::lexer::{Lex, LexError};
 use crate::Token;
-use chumsky::prelude::*;
+use chumsky::prelude::{recursive, Input, IterParser, Parser};
 use thiserror::Error as DeriveError;
 
 pub fn programm<'tokens, 'src: 'tokens>() -> impl Parser<
@@ -16,12 +12,15 @@ pub fn programm<'tokens, 'src: 'tokens>() -> impl Parser<
     Spanned<Expression>,        // Output
     Error<'tokens>,             // Error Type)
 > + Clone {
+    use crate::expression::expression;
+    use crate::item::item;
     // import, function, statement
     recursive(|block| {
-        let block_element = item(expression(block.clone()));
+        let block_element = item(expression(block.clone())).boxed();
         block_element.map_with(|expr, ctx| (expr, ctx.span()))
     })
     .validate(|it, ctx, emmit| {
+        use crate::error::{ParseError, Pattern};
         if let Item::TopLevelExprError(_) = it.0 {
             emmit.emit(ParseError::expected_found_help(
                 ctx.span(),
@@ -35,46 +34,8 @@ pub fn programm<'tokens, 'src: 'tokens>() -> impl Parser<
     .repeated()
     .collect::<Vec<_>>()
     .map_with(|items, ctx| {
-        let mut enums = vec![];
-        let mut structs = vec![];
-        let mut vars = vec![];
-        let mut fns = vec![];
-        // let mut imports = HashSet::new();
-        for (item, _) in &items {
-            match item {
-                Item::Function((a, _)) => {
-                    fns.push(a.name.0.clone());
-                }
-                Item::Import(_) => todo!(),
-                Item::Enum((e, _)) => {
-                    enums.push(e.name.0.clone());
-                }
-                Item::Struct((s, _)) => {
-                    structs.push(s.name.0.clone());
-                }
-                Item::Assingment((v, _)) => {
-                    for var in v.0 .0.get_names() {
-                        vars.push(var);
-                    }
-                }
-                Item::Trait(_) => todo!(),
-                _ => (),
-            }
-        }
-        (
-            Expression::Block(
-                items,
-                Symbols {
-                    fns,
-                    traits: vec![],
-                    structs,
-                    enums,
-                    imports: vec![],
-                    vars,
-                },
-            ),
-            ctx.span(),
-        )
+        let x = get_symbols(&items);
+        (Expression::Block(items, x), ctx.span())
     })
 }
 // ----- STATES ----
@@ -126,6 +87,7 @@ impl<'i, L, P> SketchyParserBuilder<'i, Initialized, L, P> {
         self
     }
     pub fn lex_sketchy_programm(self) -> LexResult<'i, P> {
+        use crate::lexer::lex_sketchy_program;
         let SketchyParserBuilder {
             name,
             input,
@@ -172,7 +134,7 @@ impl<'i, P> SketchyParserBuilder<'i, Initialized, Lexed, P> {
     }
     pub fn wrap_programm_in_main_assignment(self) -> Self {
         let mut toks = vec![
-            (Token::Ident("main".to_owned()), Span::new(0, 0)),
+            (Token::Ident(StrId::from("main")), Span::new(0, 0)),
             (Token::Assign, Span::new(0, 0)),
             (Token::Lparen, Span::new(0, 0)),
         ];
@@ -184,6 +146,8 @@ impl<'i, P> SketchyParserBuilder<'i, Initialized, Lexed, P> {
         }
     }
     pub fn parse_sketchy_programm(self) -> ParserResult<'i> {
+        use crate::error::errors_to_diagnostics;
+        use crate::span::SourceId;
         let input = &self.tokens.0;
         let parse = programm().parse(
             input
@@ -247,7 +211,7 @@ impl SketchyParser {
     }
     #[must_use]
     pub fn span_on_src(&self, span: Span) -> String {
-        self.input[span.start()..span.end()].to_string()
+        self.input[span.start..span.end].to_string()
     }
 }
 ///Parser error type
@@ -282,6 +246,7 @@ impl<'i, P> LexResult<'i, P> {
         self
     }
     pub fn dbg_panic(self) -> Self {
+        use crate::format_join;
         let x = if let Err(ref error) = self.0 {
             format!(
                 "Failed lexing the tokens: {}",
@@ -312,5 +277,47 @@ impl<'i> ParserResult<'i> {
         self,
     ) -> anyhow::Result<SketchyParserBuilder<'i, Initialized, Lexed, Parsed>, ParseErr<'i>> {
         self.0
+    }
+}
+fn get_symbols(items: &Vec<(Item, Span)>) -> Symbols {
+    use std::collections::HashSet;
+    let mut enums = HashSet::new();
+    let mut structs = HashSet::new();
+    let mut vars = HashSet::new();
+    let mut fns = HashSet::new();
+    let mut imports = HashSet::new();
+    let mut traits = HashSet::new();
+    for (item, _) in items {
+        match item {
+            Item::Function((a, _)) => {
+                fns.insert(a.name.0.clone());
+            }
+            Item::Import(a) => {
+                imports.insert(a.0 .0 .0.clone());
+            }
+            Item::Enum((e, _)) => {
+                enums.insert(e.name.0.clone());
+            }
+            Item::Struct((s, _)) => {
+                structs.insert(s.name.0.clone());
+            }
+            Item::Assingment((v, _)) => {
+                for var in v.0 .0.get_names().unwrap_or_default() {
+                    vars.insert(var);
+                }
+            }
+            Item::Trait(a) => {
+                traits.insert(a.0 .1.clone());
+            }
+            _ => (),
+        }
+    }
+    Symbols {
+        fns,
+        traits,
+        structs,
+        enums,
+        imports,
+        vars,
     }
 }

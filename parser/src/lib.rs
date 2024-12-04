@@ -4,6 +4,7 @@ pub use lexer::Token;
 mod ast;
 mod error;
 mod expression;
+mod interner;
 mod item;
 mod lexer;
 mod parser;
@@ -26,6 +27,7 @@ pub fn format_join<T: ToString, S>(obj: &[(T, S)], join: &str) -> Option<String>
     )
 }
 pub mod convenience_types {
+    pub use crate::interner::StrId;
     use crate::{error::ParseError, span, Token};
     pub use span::Span;
     pub type Error<'src> = chumsky::extra::Full<ParseError, (), &'src str>;

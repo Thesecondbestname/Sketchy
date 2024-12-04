@@ -3,7 +3,7 @@ use crate::ast::{
     StructDeclaration, StructField, Trait, TraitFns, Type, VariableDeclaration,
 };
 use crate::convenience_parsers::{name_parser, separator, type_parser};
-use crate::convenience_types::{Error, ParserInput, Span, Spanned};
+use crate::convenience_types::{Error, ParserInput, Span, Spanned, StrId};
 use crate::lexer::Token;
 use crate::util_parsers::{
     extra_delimited, generic_parser, ident_parser_fallback, irrefutable_pattern, newline,
@@ -72,7 +72,7 @@ where
     let arguments = choice((
         just(Token::Self_).map_with(|_, ctx| {
             (
-                ("self".to_owned(), ctx.span()),
+                (StrId::from("self"), ctx.span()),
                 Some((Type::Self_, ctx.span())),
             )
         }),
@@ -120,7 +120,7 @@ pub fn struct_parser<'tokens, 'src: 'tokens>() -> (impl Parser<
 > + Clone) {
     let struct_field = choice((
         just(Token::Self_)
-            .map_with(|_, ctx| (("self".to_owned(), ctx.span()), (Type::Self_, ctx.span()))),
+            .map_with(|_, ctx| ((StrId::from("self"), ctx.span()), (Type::Self_, ctx.span()))),
         name_parser()
             .map_with(|name, ctx| (name, ctx.span()))
             .then_ignore(just(Token::Hashtag))
@@ -267,10 +267,13 @@ pub fn trait_parser<'tokens, 'src: 'tokens>(
         .map_with(|((name, ret), args), ctx| (TraitFns(name, args, ret), ctx.span()));
     let r#trait = just(Token::Trait)
         .ignore_then(
-            generic_parser()
+            (generic_parser()
                 .map_with(|a, ctx| (a, ctx.span()))
                 .separated_by(just(Token::Comma))
-                .collect(),
+                .collect()
+                .delimited_by(just(Token::Lbucket), just(Token::Rbucket)))
+            .or_not()
+            .map(|a| a.unwrap_or_default()),
         )
         .then(type_name_parser())
         .then(

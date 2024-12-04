@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::expect_used)]
-use crate::{ast, impl_display};
+use crate::{ast, impl_display, interner::StrId};
 use logos::{Lexer, Logos};
 pub type Lex = Vec<(Token, std::ops::Range<usize>)>;
 pub type LexError = Vec<((), std::ops::Range<usize>, String)>;
@@ -99,8 +99,8 @@ pub enum Token {
     Asterisc,
     #[regex(r"(\d+)\.\.(\d+)?", |lex| parse_span(lex.slice()))]
     Span(Span),
-    #[regex("[a-zA-Z_öäü][a-zA-Z0-9_öäü]*", |lex| lex.slice().to_string())]
-    Ident(String),
+    #[regex("[a-zA-Z_öäü][a-zA-Z0-9_öäü]*", |lex| StrId::from(lex.slice()))]
+    Ident(StrId),
     #[regex(r#""([^"\\]|\\t|\\u|\\n|\\")*""#, |lex| lex.slice().to_string())]
     LiteralString(String),
     #[token("{")]
@@ -224,7 +224,7 @@ impl_display!(Token, |s: &Token| {
             "{start}..{}",
             end.map(|x| x.to_string()).unwrap_or_default()
         ),
-        Token::Ident(ident) => format!("ident: {ident}"),
+        Token::Ident(ident) => format!("ident: {}", ident.as_str()),
         Token::LiteralString(string) => format!(r#""{string}""#),
         Token::If => "if".to_owned(),
         Token::Import => "use".to_owned(),

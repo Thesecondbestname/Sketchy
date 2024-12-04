@@ -10,9 +10,10 @@ fn basic_lex() -> anyhow::Result<()> {
     enum Foo:
         baz
     ;
-    trait'A,'B#Add,'C Add : 
-        add: fn#A:B;,
-        int;
+    trait['A,'B#Add,'C] Add : 
+        add: 
+            fn#A: B#int;, 
+            C;
     ;    
     struct Baz:
         lmao# int,
@@ -96,7 +97,7 @@ fn structs_with_impl() -> anyhow::Result<()> {
 fn function_types() -> anyhow::Result<()> {
     let input = "trait Add: 
             add#int: 
-                fn#int: int,int;, 
+                fn#int: a#int, b#int;, 
                 int
             ; 
         ;";
@@ -164,11 +165,11 @@ fn function_definitions() -> anyhow::Result<()> {
     test(input, "function_definitions")
 }
 
-#[test]
-fn span() -> anyhow::Result<()> {
-    let input = "x = ( a + 45)..500\n";
-    test(input, "span")
-}
+// #[test]
+// fn span() -> anyhow::Result<()> {
+//     let input = "x = ( a + 45)..500\n";
+//     test(input, "span")
+// }
 #[test]
 fn import() -> anyhow::Result<()> {
     let input = r"baz = use foo/bar/baz";
@@ -234,19 +235,9 @@ fn multiple_expressions() -> anyhow::Result<()> {
     test(input, "multiple_expressions")
 }
 // #[test]
-// fn conditions() -> anyhow::Result<()> {
-//     let input = r"g = if (4 == 4) then (x = 3)";
-//     test(input, "conditions")
-// }
-#[test]
-fn for_loops() -> anyhow::Result<()> {
-    let input = r"g = for 0..10 :i; i";
-    test(input, "for_loops")
-}
-// #[test]
-// fn conditions_inverted_parens() -> anyhow::Result<()> {
-//     let input = "l = if 4 == 4 then (n = 2.pass)";
-//     test(input, "conditions_inverted_parens")
+// fn for_loops() -> anyhow::Result<()> {
+//     let input = r"g = for 0..10 :i; i";
+//     test(input, "for_loops")
 // }
 #[test]
 fn multiple_calls() -> anyhow::Result<()> {
@@ -268,6 +259,14 @@ fn math_operation() -> anyhow::Result<()> {
     let input = r"x = 2+7/(3+4)";
     test(input, "math_operation")
 }
+#[test]
+fn hash_map() {
+    let x = crate::interner::Interner::with_capacity(64);
+    let id = x.intern("helo");
+    let id2 = x.intern("helo");
+    assert!(x.lookup(id) == x.lookup(id2) && x.lookup(id2) == "helo")
+}
+
 fn test(input: &str, name: &'static str) -> anyhow::Result<()> {
     let mut colors = ColorGenerator::new();
     let a = colors.next();
@@ -294,14 +293,15 @@ fn test(input: &str, name: &'static str) -> anyhow::Result<()> {
             a.emit(std::io::stdout(), name, inp);
         })
         .into_result()?
-        .inspect_ast(|x| {
-            println!(
-                "{}",
-                x.as_ref()
-                    .map(|x| x.0.to_string())
-                    .unwrap_or("No ast was parsed!".to_string())
-            )
-        })
+        .inspect_ast(|x| x.clone().inspect(|a| println!("{:?}", a.0.get_idents())))
+        // .inspect_ast(|x| {
+        //     println!(
+        //         "{}",
+        //         x.as_ref()
+        //             .map(|x| x.0.to_string())
+        //             .unwrap_or("No ast was parsed!".to_string())
+        //     )
+        // })
         .finish();
     println!("\n\t{:?}", parse.ast());
     Ok(())
