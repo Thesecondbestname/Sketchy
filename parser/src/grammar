@@ -1,0 +1,105 @@
+<Programm> ::= <Items>
+<Item> ::= <Struct> | <Enum> | <Assignment> | <Trait> | <Function> | <Impl>
+
+<Struct> ::= "struct " <TypeName>  <Generics>?  ((":"  <Newline> <Args> ";" ) | "(" <Types> ")")
+<Enum> ::= "enum "  <TypeName>  <Generics>?  ":" <Newline> <Args> ";"
+<Assignment> ::= <Pattern> "=" <Expression>
+<Trait> ::= "trait "  <TypeName>  <Generics>?  ":"  <Newline> (<FunctionDecl>  ",")*  ";"
+<Function> ::= <FunctionDecl> "= " <Expression>
+<Import> ::= "use " <Ident>
+<Impl> ::= "impl " <TypeIdent> ":" <Newline> <Functions> ";"
+<TraitImpl> ::= "impl " <TypeIdent> "for" <TypeIdent> ":" <Newline> <Functions> ";"
+
+
+<Arg> ::= <VarIdent> "#" <GenericType>
+<Generics> ::= "[" <GenericsInner> "]"
+<Name> ::= ([A-Z] | [a-z]) ([0-9] | [a-z] | [A-Z])*
+<TypeName> ::= [A-Z] ([0-9] | [a-z] | [A-Z])*
+<VarName> ::= [a-z] ([0-9] | [a-z] | [A-Z])*
+<Ident> ::=  <Name> "::" <Ident> | <Name>
+<VarIdent> ::=  <Name> "::" <Ident> | <VarName>
+<TypeIdent> ::=  <Name> "::" <Ident> | <TypeName>
+<Lambda> ::= "(" <Names>? ") " <BlockExpression> 
+<FunctionDecl> ::= <VarName> <Generics>? "(" <Names>? ")" "#" (<GenericType> | "(" <Types> ")" ) "->" <GenericType>
+<FunctionCall> ::= 
+    (<VarIdent> | <Lambda>) "(" <Names>? ")" 
+    | (<BlockExpression> | <FunctionCall>) "." <VarIdent> "(" <Names>? ")"
+ 
+<BlockExpression> ::= "{" <BlockExpressionInner> "}" 
+
+/*Need refinement*/
+<Expression> ::= ("\"" [A-Z]+ "\"") | [0-9]+ | <Lambda> | <BlockExpression> | <Import> | <FunctionCall>
+<Type> ::= "char " | "int " | "bool " | "float " | "[" <Type> "]" | <TypeIdent> 
+<GenericType> ::= <Type> <Generics>?
+<Pattern> ::= 
+    <VarName> 
+    | "let " "(" ( <Pattern> ",")+ ")" 
+    | "let " <TypeIdent> ("(" (<Pattern> ",")+ ")")
+    | "let " <TypeIdent>  ":" <Pattern> ";"
+    | "let " "[" <Pattern> ".." <Pattern> "]"  
+    | "_"
+
+
+/* Recursive types */
+<BlockExpressionInner> ::= 
+    (<Assignment> | <Function>) "\n" <BlockExpressionInner>
+    | <Expression>
+
+<Functions> ::=  <Function> ", " <Functions> | <Function> 
+<Items> ::= <Item> <Newline> <Items> | <Item> 
+<GenericsInner> ::= <TypeName> ("+" <TypeName>)* | <TypeName> ("+" <TypeName>)* ", " <GenericsInner>
+<Args> ::=  <Arg> ", " <Args> | <Arg> 
+<Types> ::=  <GenericType> ", " <Types> | <GenericType> 
+<Names> ::=  <Name> ", " <Names> | <Name> 
+<VarNames> ::=  <VarNames> ", " <VarNames> | <VarName> 
+
+/* Ignore */ 
+<Newline> ::= "\n"
+
+
+new[C](window, a) #(Window, int) -> C = { 
+    a-4 *3
+}
+new = (window, a) { 
+    a-4 *3
+}
+
+x = xöla
+y = 69 / (56 - 0.45)
+_ = print::print(works)
+Print = use io/print
+enum Foo:
+    baz
+;
+trait Add[A,B#Add,C]: 
+    add(fn#A(B#int), C)
+;    
+struct Baz:
+    lmao# int,
+    lmao2# int,
+;
+impl Add for Baz:
+    add#int: Self; (
+        self.lmao + self.lmao2
+    )
+;
+
+
+
+new[C] = (window: Window): C { 
+    a-4 *3
+}
+
+
+draw#int: 
+    state, 
+    frame, 
+    window# Window; ( 
+     a-4 *3
+)   
+// add(x, y) = 
+//     match x: 
+//         4 => "four",
+//         _ => x + y
+//      ;
+

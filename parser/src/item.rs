@@ -6,8 +6,8 @@ use crate::convenience_parsers::{name_parser, separator, type_parser};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned, StrId};
 use crate::lexer::Token;
 use crate::util_parsers::{
-    extra_delimited, generic_parser, ident_parser_fallback, irrefutable_pattern, newline,
-    type_ident_parser_fallback, type_name_parser,
+    extra_delimited, generics_parser, ident_parser_fallback, in_paren_list, irrefutable_pattern,
+    newline, type_ident_parser_fallback, type_name_parser,
 };
 
 use chumsky::prelude::*;
@@ -56,7 +56,6 @@ where
     ));
     declarations
 }
-// fn = name ":" (ident "#" type ,)*; type block
 pub fn function_definition<'tokens, 'src: 'tokens, T>(
     block: T,
 ) -> (impl Parser<
@@ -76,7 +75,7 @@ where
                 Some((Type::Self_, ctx.span())),
             )
         }),
-        name_parser().map_with(|name, ctx| (name, ctx.span())).then(
+        name_parser().then(
             just(Token::Hashtag)
                 .ignore_then(type_parser().map_with(|type_, ctx| (type_, ctx.span())))
                 .or_not(),
@@ -87,7 +86,6 @@ where
     .collect::<Vec<_>>()
     .labelled("arguments");
     let function = name_parser()
-        .map_with(|name, ctx| (name, ctx.span()))
         .then(
             just(Token::Hashtag).ignore_then(
                 type_parser()
@@ -122,7 +120,6 @@ pub fn struct_parser<'tokens, 'src: 'tokens>() -> (impl Parser<
         just(Token::Self_)
             .map_with(|_, ctx| ((StrId::from("self"), ctx.span()), (Type::Self_, ctx.span()))),
         name_parser()
-            .map_with(|name, ctx| (name, ctx.span()))
             .then_ignore(just(Token::Hashtag))
             .then(type_parser().map_with(|type_, ctx| (type_, ctx.span()))),
     ))
@@ -130,7 +127,6 @@ pub fn struct_parser<'tokens, 'src: 'tokens>() -> (impl Parser<
     .labelled("struct declaration field");
     let r#struct = just(Token::Struct)
         .ignore_then(type_name_parser())
-        .map_with(|a, c| (a, c.span()))
         .then_ignore(just(Token::Colon))
         .then_ignore(separator())
         .then(
@@ -172,14 +168,7 @@ pub fn enum_parser<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<EnumDeclaration>, Error<'tokens>> + Clone
 {
     let enum_fields = name_parser()
-        .then(
-            type_parser()
-                .map_with(|a, ctx| (a, ctx.span()))
-                .separated_by(just(Token::Comma).then_ignore(separator()))
-                .collect()
-                .delimited_by(just(Token::Lparen), just(Token::Rparen))
-                .or_not(),
-        )
+        .then(in_paren_list(type_parser().map_with(|a, ctx| (a, ctx.span()))).or_not())
         .padded_by(separator())
         .map_with(|(name, fields), ctx| {
             (
@@ -194,7 +183,6 @@ pub fn enum_parser<'tokens, 'src: 'tokens>(
 
     let r#enum = just(Token::Enum)
         .ignore_then(type_name_parser())
-        .map_with(|a, c| (a, c.span()))
         .then_ignore(just(Token::Colon))
         .then_ignore(separator())
         .then(
@@ -211,16 +199,13 @@ pub fn enum_parser<'tokens, 'src: 'tokens>(
 
 pub fn import<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Import>, Error<'tokens>> + Clone {
-    let ident = name_parser();
     let import = name_parser()
-        .map_with(|a, c| (a, c.span()))
         // FAT TODO: UTILIZE NAME GIVEN TO MODULE
         .then_ignore(just(Token::Assign))
         .then_ignore(just(Token::Import))
         .then(
-            ident
+            name_parser()
                 .clone()
-                .map_with(|module, ctx| (module, ctx.span()))
                 .separated_by(just(Token::Slash))
                 .collect(),
         )
@@ -266,15 +251,7 @@ pub fn trait_parser<'tokens, 'src: 'tokens>(
         )
         .map_with(|((name, ret), args), ctx| (TraitFns(name, args, ret), ctx.span()));
     let r#trait = just(Token::Trait)
-        .ignore_then(
-            (generic_parser()
-                .map_with(|a, ctx| (a, ctx.span()))
-                .separated_by(just(Token::Comma))
-                .collect()
-                .delimited_by(just(Token::Lbucket), just(Token::Rbucket)))
-            .or_not()
-            .map(|a| a.unwrap_or_default()),
-        )
+        .ignore_then(generics_parser().or_not())
         .then(type_name_parser())
         .then(
             fns.separated_by(just(Token::Comma).padded_by(separator()))
@@ -299,13 +276,12 @@ where
 {
     let impl_no_trait = just(Token::Impl)
         .ignore_then(type_ident_parser_fallback())
-        .map_with(|a, ctx| ((a, ctx.span()), None));
+        .map(|a| ((a.clone(), None), a.1));
     let trait_impl = just(Token::Impl)
         .ignore_then(type_ident_parser_fallback())
-        .map_with(|a, ctx| (a, ctx.span()))
         .then_ignore(just(Token::For))
         .then(ident_parser_fallback())
-        .map_with(|(a, b), ctx| (a, Some((b, ctx.span()))));
+        .map_with(|(a, b), c| ((a, Some(b)), c.span()));
     let impl_block = choice((impl_no_trait, trait_impl))
         .then_ignore(just(Token::Colon))
         .then(
@@ -317,8 +293,8 @@ where
         )
         .then_ignore(just(Token::Semicolon).padded_by(separator()))
         .map(|(a, fns)| Impl {
-            impl_for: a.0,
-            impl_what: a.1,
+            impl_for: a.0 .0,
+            impl_what: a.0 .1,
             fns,
         })
         .labelled("Impl block");

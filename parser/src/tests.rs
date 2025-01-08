@@ -10,10 +10,8 @@ fn basic_lex() -> anyhow::Result<()> {
     enum Foo:
         baz
     ;
-    trait['A,'B#Add,'C] Add : 
-        add: 
-            fn#A: B#int;, 
-            C;
+    trait[A,B#Add,C] Add: 
+        add(fn#A(B#int), C)
     ;    
     struct Baz:
         lmao# int,
@@ -34,10 +32,11 @@ fn basic_lex() -> anyhow::Result<()> {
         window# Window; ( 
          a-4 *3
     )   
-    // add:x, y; = 
-    //     match x if 
-    //         4 then "four",
-    //         _ then x + y
+    // add(x, y) = 
+    //     match x: 
+    //         4 => "four",
+    //         _ => x + y
+    //      ;
 
     add#int: x#int, y#int; (
         match x if
@@ -110,7 +109,7 @@ fn method_calls() -> anyhow::Result<()> {
 }
 #[test]
 fn multiple_stmts_in_block() -> anyhow::Result<()> {
-    let input = "x = (x = 3\n y = 5)";
+    let input = "x = {x = 3\n y = 5}";
     test(input, "multiple_stmts_in_block")
 }
 #[test]
@@ -120,7 +119,7 @@ fn traits() -> anyhow::Result<()> {
 }
 #[test]
 fn array_destructuring() -> anyhow::Result<()> {
-    let input = "x = ([a,b,c..d] = y)";
+    let input = "x = {[a,b,c..d] = y}";
     test(input, "array_destructuring")
 }
 #[test]
@@ -228,10 +227,10 @@ fn r#match() -> anyhow::Result<()> {
 }
 #[test]
 fn multiple_expressions() -> anyhow::Result<()> {
-    let input = "z = (
+    let input = "z = {
      x = 4+5
         x = 32
-    )";
+    }";
     test(input, "multiple_expressions")
 }
 // #[test]

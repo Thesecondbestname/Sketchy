@@ -55,6 +55,8 @@ pub enum Token {
     Comma,
     #[token("#")]
     Hashtag,
+    #[token("->")]
+    Arrow,
     #[token("/")]
     Slash,
     #[token("if")]
@@ -99,7 +101,9 @@ pub enum Token {
     Asterisc,
     #[regex(r"(\d+)\.\.(\d+)?", |lex| parse_span(lex.slice()))]
     Span(Span),
-    #[regex("[a-zA-Z_öäü][a-zA-Z0-9_öäü]*", |lex| StrId::from(lex.slice()))]
+    #[regex("[A-Z][a-zA-Z0-9_öäü_ÄÖÜ]*", |lex| StrId::from(lex.slice()))]
+    TypeIdent(StrId),
+    #[regex("[a-z_öäü][a-zA-Z0-9_öäü_ÄÖÜ]*", |lex| StrId::from(lex.slice()))]
     Ident(StrId),
     #[regex(r#""([^"\\]|\\t|\\u|\\n|\\")*""#, |lex| lex.slice().to_string())]
     LiteralString(String),
@@ -130,10 +134,13 @@ pub enum Token {
     #[token("&&")]
     And,
     #[token("}")]
+    /// }
     Rbracket,
     #[token("]")]
+    /// ]
     Rbucket,
     #[token("[")]
+    /// [
     Lbucket,
     #[token(")")]
     Rparen,
@@ -258,5 +265,7 @@ impl_display!(Token, |s: &Token| {
         Token::Lbucket => "[".to_owned(),
         Token::Self_ => "self".to_owned(),
         Token::Trait => "trait".to_owned(),
+        Token::TypeIdent(id) => id.to_string(),
+        Token::Arrow => "->".to_owned(),
     }
 });

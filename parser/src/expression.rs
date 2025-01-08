@@ -1,10 +1,11 @@
 #![allow(clippy::too_many_lines)]
 
-use crate::ast::{BinaryOp, ComparisonOp, Expression, Item, MathOp, Number, Symbols, Value};
+use crate::ast::{self, BinaryOp, ComparisonOp, Expression, Item, MathOp, Number, Symbols, Value};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned};
 use crate::util_parsers::{
-    extra_delimited, ident_parser_fallback, name_parser, refutable_pattern, separator,
-    type_ident_parser, type_ident_parser_fallback,
+    extra_delimited, generics_parser, ident_parser_fallback, in_paren_list, name_parser,
+    refutable_pattern, separator, type_ident_parser, type_ident_parser_fallback, type_parser,
+    var_name,
 };
 use crate::Token;
 use chumsky::prelude::*;
@@ -21,62 +22,66 @@ where
     T: Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Item>, Error<'tokens>> + Clone + 'tokens,
 {
     let ident = ident_parser_fallback();
-    let delim_block = extra_delimited(stmt.repeated().collect::<Vec<_>>())
-        .map(|items| {
-            use crate::convenience_types::StrId;
-            use std::collections::HashSet;
-            let mut enums = HashSet::new();
-            let mut structs = HashSet::new();
-            let mut vars = HashSet::new();
-            let mut fns = HashSet::new();
-            let mut imports = HashSet::new();
-            let mut traits = HashSet::new();
-            for (item, _) in &items {
-                match item {
-                    Item::Function((a, _)) => {
-                        fns.insert(a.name.0.clone());
-                    }
-                    Item::Import(a) => {
-                        imports.insert(a.0 .0 .0.clone());
-                    }
-                    Item::Enum((e, _)) => {
-                        enums.insert(e.name.0.clone());
-                    }
-                    Item::Struct((s, _)) => {
-                        structs.insert(s.name.0.clone());
-                    }
-                    Item::Assingment((v, _)) => {
-                        for var in v.0 .0.get_names().unwrap_or_default() {
-                            vars.insert(StrId::from(var));
-                        }
-                    }
-                    Item::Trait(a) => {
-                        traits.insert(a.0 .1.clone());
-                    }
-                    _ => (),
+    let delim_block = {
+        let idk = stmt.repeated().collect::<Vec<_>>();
+        idk.delimited_by(
+            just(Token::Lbracket).delimited_by(separator(), separator()),
+            separator().then(just(Token::Rbracket)),
+        )
+    }
+    .map(|items| {
+        use crate::convenience_types::StrId;
+        use std::collections::HashSet;
+        let mut enums = HashSet::new();
+        let mut structs = HashSet::new();
+        let mut vars = HashSet::new();
+        let mut fns = HashSet::new();
+        let mut imports = HashSet::new();
+        let mut traits = HashSet::new();
+        for (item, _) in &items {
+            match item {
+                Item::Function((a, _)) => {
+                    fns.insert(a.name.0.clone());
                 }
+                Item::Import(a) => {
+                    imports.insert(a.0 .0 .0.clone());
+                }
+                Item::Enum((e, _)) => {
+                    enums.insert(e.name.0.clone());
+                }
+                Item::Struct((s, _)) => {
+                    structs.insert(s.name.0.clone());
+                }
+                Item::Assingment((v, _)) => {
+                    for var in v.0 .0.get_names().unwrap_or_default() {
+                        vars.insert(StrId::from(var));
+                    }
+                }
+                Item::Trait(a) => {
+                    traits.insert(a.0 .1.clone());
+                }
+                _ => (),
             }
-            Expression::Block(
-                items,
-                Symbols {
-                    fns,
-                    traits,
-                    structs,
-                    enums,
-                    imports,
-                    vars,
-                },
-            )
-        })
-        .labelled("Code block");
+        }
+        Expression::Block(
+            items,
+            Symbols {
+                fns,
+                traits,
+                structs,
+                enums,
+                imports,
+                vars,
+            },
+        )
+    })
+    .labelled("Code block");
 
     // The recursive expression Part
     recursive(|expression| {
         let struct_construction = type_ident_parser_fallback()
-            .map_with(|a, ctx| (a, ctx.span()))
             .then(
                 name_parser()
-                    .map_with(|a, ctx| (a, ctx.span()))
                     .then_ignore(just(Token::Assign))
                     .then(expression.clone())
                     .separated_by(just(Token::Comma))
@@ -85,27 +90,6 @@ where
                     .map_with(|a, ctx| (a, ctx.span())),
             )
             .map(|(name, args)| Expression::Value(Value::Struct { name, fields: args }))
-            .labelled("Object construction");
-        let enum_construction = type_ident_parser()
-            .clone()
-            .map_with(|a, ctx| (a, ctx.span()))
-            .then(
-                expression
-                    .clone()
-                    .separated_by(just(Token::Comma))
-                    .collect::<Vec<_>>()
-                    .delimited_by(just(Token::Lparen), just(Token::Rparen))
-                    .map_with(|a, ctx| (a, ctx.span()))
-                    .or_not(),
-            )
-            .map(|args| {
-                Expression::Value(Value::Enum {
-                    variant: args.0.clone(),
-                    fields: args
-                        .1
-                        .unwrap_or((vec![], Span::new(args.0 .1.end, args.0 .1.end))),
-                })
-            })
             .labelled("Object construction");
         // A list of expressions
         let items = expression
@@ -127,6 +111,19 @@ where
             )))
             .labelled("list of expressions")
             .as_context();
+        let enum_construction = type_ident_parser()
+            .clone()
+            .map_with(|a, ctx| (a, ctx.span()))
+            .then(list.clone().map_with(|a, ctx| (a, ctx.span())).or_not())
+            .map(|args| {
+                Expression::Value(Value::Enum {
+                    variant: args.0.clone(),
+                    fields: args
+                        .1
+                        .unwrap_or((vec![], Span::new(args.0 .1.end, args.0 .1.end))),
+                })
+            })
+            .labelled("Object construction");
         // Atom which is the smallest expression.
         let atom = choice((
             value(),
@@ -139,18 +136,23 @@ where
         .labelled("Atom")
         .as_context()
         .map_with(|expr, span| (expr, span.span()))
-        .or(extra_delimited(expression.clone())
-            .clone()
-            // Attempt to recover anything that looks like a parenthesised expression but contains errors
-            .recover_with(via_parser(nested_delimiters(
-                Token::Lparen,
-                Token::Rparen,
-                [(Token::Lbracket, Token::Rbracket)],
-                |span| (Expression::ParserError, span),
-            )))
-            .boxed()
-            .labelled("Expression Block")
-            .as_context());
+        .or({
+            expression.clone().delimited_by(
+                just(Token::Lbracket).delimited_by(separator(), separator()),
+                separator().then(just(Token::Rbracket)),
+            )
+        }
+        .clone()
+        // Attempt to recover anything that looks like a parenthesised expression but contains errors
+        .recover_with(via_parser(nested_delimiters(
+            Token::Lbracket,
+            Token::Rbracket,
+            [(Token::Lparen, Token::Rparen)],
+            |span| (Expression::ParserError, span),
+        )))
+        .boxed()
+        .labelled("Expression Block")
+        .as_context());
 
         let unary = just(Token::Bang)
             .map_with(|a, ctx| (a, ctx.span()))
@@ -385,42 +387,10 @@ where
                     ctx.span(),
                 )
             });
-        // "for" <expression> :<args>; <expression>
-        // let for_loop = just(Token::For)
-        //     .ignore_then(expression.clone())
-        //     .then_ignore(just(Token::Colon))
-        //     .then(irrefutable_pattern())
-        //     .then_ignore(just(Token::Semicolon))
-        //     .then(expression.clone())
-        //     .map_with(|((iterator, name), code_block), ctx| {
-        //         (
-        //             Expression::For(Box::new(For {
-        //                 name,
-        //                 iterator,
-        //                 code_block,
-        //             })),
-        //             ctx.span(),
-        //         )
-        //     });
-        // let span = comp
-        //     .clone()
-        //     .boxed()
-        //     .then_ignore(just(Token::DoubleDot))
-        //     .then(comp.clone())
-        //     .map_with(|(start, end), ctx| {
-        //         (
-        //             Expression::Value(Value::Span(Some(Box::new(start)), Some(Box::new(end)))),
-        //             ctx.span(),
-        //         )
-        //     })
-        //     .labelled("span")
-        //     .as_context();
-
         choice((
             // span,
             comp.labelled("line expression").as_context().boxed(),
             r#match.boxed(),
-            // for_loop,
         ))
         .boxed()
     })
@@ -448,4 +418,45 @@ pub fn value<'tokens, 'src: 'tokens>() -> impl Parser<
     let string =
         select! {Token::LiteralString(s) => Expression::Value(Value::String(s))}.labelled("String");
     choice((number, bool, string))
+}
+
+// <Function> ::= <VarName> <Generics>? "(" <Names>? ")" "#" (<Type> | "(" <Types> ")" ) "->" <Type> "= " <Expression>
+pub fn function_definition<'tokens, 'src: 'tokens, T>(
+    block: T,
+) -> (impl Parser<
+    'tokens,
+    ParserInput<'tokens, 'src>,         // Input
+    Spanned<ast::FunctionDeclaration2>, // Output
+    Error<'tokens>,                     // Error Type
+> + Clone)
+where
+    T: Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Expression>, Error<'tokens>> + Clone, // Statement
+{
+    var_name()
+        .then(generics_parser().or_not())
+        .then_ignore(just(Token::Lparen))
+        .then(var_name().repeated().collect())
+        .then_ignore(just(Token::Hashtag))
+        .then(choice((
+            type_parser().map_with(|a, c| vec![(a, c.span())]),
+            in_paren_list(type_parser().map_with(|a, c| (a, c.span()))),
+        )))
+        .then_ignore(just(Token::Arrow))
+        .then(type_parser().map_with(|a, c| (a, c.span())))
+        .then_ignore(just(Token::Assign))
+        .then(block)
+        .map_with(
+            |(((((name, generics), arguments), arg_types), return_type), body), c| {
+                (
+                    ast::FunctionDeclaration2 {
+                        name,
+                        generics,
+                        arguments,
+                        type_: (arg_types, return_type),
+                        body,
+                    },
+                    c.span(),
+                )
+            },
+        )
 }

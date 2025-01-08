@@ -1,4 +1,4 @@
-use crate::ast::{self, Ident, Name, Pattern, Type};
+use crate::ast::{self, Generics, Ident, Name, Pattern, Type};
 use crate::convenience_types::{Error, ParserInput, Spanned, StrId};
 use crate::expression::value;
 use crate::{ParseError, Token};
@@ -7,36 +7,67 @@ use chumsky::prelude::*;
 pub fn name_parser<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
-    StrId,                      // Output
+    Spanned<StrId>,             // Output
     Error<'tokens>,             // Error Type
 > + Clone {
-    select! { Token::Ident(ident) => ident }.labelled("Name")
+    select! { Token::Ident(ident) => ident,
+    Token::TypeIdent(ident) => ident
+     }
+    .map_with(|a, ctx| (a, ctx.span()))
+    .labelled("Name")
 }
-pub fn generic_parser<'tokens, 'src: 'tokens>() -> impl Parser<
+pub fn var_name<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
-    ast::Generic,               // Output
+    Spanned<StrId>,             // Output
     Error<'tokens>,             // Error Type
 > + Clone {
-    just(Token::Asterisc)
-        .ignore_then(name_parser().map_with(|a, ctx| (a, ctx.span())))
+    select! { Token::Ident(ident) => ident}
+        .map_with(|a, ctx| (a, ctx.span()))
+        .labelled("Variable Name")
+}
+pub fn type_name<'tokens, 'src: 'tokens>() -> impl Parser<
+    'tokens,
+    ParserInput<'tokens, 'src>, // Input
+    Spanned<StrId>,             // Output
+    Error<'tokens>,             // Error Type
+> + Clone {
+    select! { Token::TypeIdent(ident) => ident}
+        .map_with(|a, ctx| (a, ctx.span()))
+        .labelled("Type Name")
+}
+// <Generics> ::= "[" (<TypeName> ", ")+ "]"
+pub fn generics_parser<'tokens, 'src: 'tokens>() -> impl Parser<
+    'tokens,
+    ParserInput<'tokens, 'src>, // Input
+    Spanned<ast::Generics>,     // Output
+    Error<'tokens>,             // Error Type
+> + Clone {
+    let generic_bound = just(Token::Plus).ignore_then(type_ident_parser_fallback());
+    let generic = type_name()
         .then(
             just(Token::Hashtag)
-                .ignore_then(name_parser().map_with(|a, ctx| (a, ctx.span())))
-                .separated_by(just(Token::Plus))
-                .collect(),
+                .ignore_then(generic_bound.repeated().collect())
+                .or_not()
+                .map(|a| a.unwrap_or_default()),
         )
-        .map(|a| ast::Generic(a))
+        .map_with(|a, c| (ast::Generic(a), c.span()));
+    generic
+        .separated_by(just(Token::Comma))
+        .allow_trailing()
+        .collect()
+        .delimited_by(just(Token::Lbucket), just(Token::Rbucket))
+        .map_with(|a, c| (Generics(a), c.span()))
 }
 pub fn type_name_parser<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
-    StrId,                      // Output
+    Spanned<StrId>,             // Output
     Error<'tokens>,             // Error Type
 > + Clone {
-    select! { Token::Ident(ident) => ident }
+    name_parser()
         .validate(|v, ctx, emitter| {
-            if !v.as_str().chars().next().is_some_and(char::is_uppercase) {
+            if !v.0.as_str().chars().next().is_some_and(char::is_uppercase) {
                 emitter.emit(ParseError::expected_found_help(
                     ctx.span(),
                     vec![crate::error::Pattern::Label("Type name")],
@@ -51,12 +82,12 @@ pub fn type_name_parser<'tokens, 'src: 'tokens>() -> impl Parser<
 pub fn ident_parser_fallback<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
-    Ident,                      // Output
+    Spanned<Ident>,             // Output
     Error<'tokens>,             // Error Type
 > + Clone {
-    select! { Token::Ident(ident) => ident }
+    name_parser()
         .validate(|v, ctx, emitter| {
-            if !v.as_str().chars().next().is_some_and(char::is_lowercase) {
+            if !v.0.as_str().chars().next().is_some_and(char::is_lowercase) {
                 emitter.emit(ParseError::expected_found_help(
                     ctx.span(),
                     vec![crate::error::Pattern::Label("Identifier")],
@@ -66,23 +97,22 @@ pub fn ident_parser_fallback<'tokens, 'src: 'tokens>() -> impl Parser<
             }
             v
         })
-        .map_with(|a, ctx| (a, ctx.span()))
         .separated_by(just(Token::DoubleColon))
         .at_least(1)
         .collect()
-        .map(|a| ast::Ident(a))
+        .map_with(|a, ctx| (ast::Ident(a), ctx.span()))
         .labelled("Identifier")
 }
 /// ONLY USE WHEN IDENT_PARSER IS NOT VALID
 pub fn type_ident_parser_fallback<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
-    Ident,                      // Output
+    Spanned<Ident>,             // Output
     Error<'tokens>,             // Error Type
 > + Clone {
-    select! { Token::Ident(ident) => ident }
+    name_parser()
         .validate(|v, ctx, emitter| {
-            if !v.as_str().chars().next().is_some_and(char::is_uppercase) {
+            if !v.0.as_str().chars().next().is_some_and(char::is_uppercase) {
                 emitter.emit(ParseError::expected_found_help(
                     ctx.span(),
                     vec![crate::error::Pattern::Label("Type ident")],
@@ -92,11 +122,11 @@ pub fn type_ident_parser_fallback<'tokens, 'src: 'tokens>() -> impl Parser<
             }
             v
         })
-        .map_with(|a, ctx| (a, ctx.span()))
         .separated_by(just(Token::DoubleColon))
         .at_least(1)
         .collect()
         .map(ast::Ident)
+        .map_with(|a, c| (a, c.span()))
         .labelled("Uppercase type ident")
 }
 pub fn type_ident_parser<'tokens, 'src: 'tokens>() -> impl Parser<
@@ -105,8 +135,7 @@ pub fn type_ident_parser<'tokens, 'src: 'tokens>() -> impl Parser<
     Ident,                      // Output
     Error<'tokens>,             // Error Type
 > + Clone {
-    select! { Token::Ident(ident) if ident.as_str().chars().next().is_some_and(char::is_uppercase) => ident }
-        .map_with(|a, ctx| (a, ctx.span()))
+    type_name()
         .separated_by(just(Token::DoubleColon))
         .at_least(1)
         .collect()
@@ -129,7 +158,7 @@ pub fn type_parser<'tokens, 'src: 'tokens>() -> impl Parser<
 > + Clone {
     let int = select! { Token::Integer(v) => v }.labelled("Whole AAh integer");
     recursive(|r#type| {
-        let path = type_ident_parser_fallback().map_with(|a, ctx| Type::Path((a, ctx.span())));
+        let path = type_ident_parser_fallback().map(|a| Type::Path(a));
         let primitives = select! {Token::Type(x) => x,}.labelled("primitive type");
         let tuple = r#type
             .clone()
@@ -156,7 +185,6 @@ pub fn type_parser<'tokens, 'src: 'tokens>() -> impl Parser<
             )
             .then(
                 name_parser()
-                    .map_with(|a, ctx| (a, ctx.span()))
                     .then_ignore(just(Token::Hashtag))
                     .then(r#type.clone().map_with(|a, ctx| (a, ctx.span())))
                     .separated_by(just(Token::Comma).then(separator()))
@@ -193,6 +221,22 @@ where
         just(Token::Lparen).delimited_by(separator(), separator()),
         separator().then(just(Token::Rparen)),
     )
+}
+pub fn in_paren_list<'tokens, 'src: 'tokens, T, U>(
+    idk: T,
+) -> impl Parser<
+    'tokens,
+    ParserInput<'tokens, 'src>, // Input
+    Vec<U>,                     // Output
+    Error<'tokens>,             // Error Type
+> + Clone
+where
+    T: Parser<'tokens, ParserInput<'tokens, 'src>, U, Error<'tokens>> + Clone, // Statement
+{
+    idk.separated_by(just(Token::Comma).then(separator()))
+        .allow_trailing()
+        .collect()
+        .delimited_by(just(Token::Lparen), just(Token::Rparen))
 }
 pub fn newline<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
