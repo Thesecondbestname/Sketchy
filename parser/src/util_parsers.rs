@@ -43,11 +43,14 @@ pub fn generics_parser<'tokens, 'src: 'tokens>() -> impl Parser<
     Spanned<ast::Generics>,     // Output
     Error<'tokens>,             // Error Type
 > + Clone {
-    let generic_bound = just(Token::Plus).ignore_then(type_ident_parser_fallback());
     let generic = type_name()
         .then(
             just(Token::Hashtag)
-                .ignore_then(generic_bound.repeated().collect())
+                .ignore_then(
+                    type_ident_parser_fallback()
+                        .separated_by(just(Token::Plus))
+                        .collect(),
+                )
                 .or_not()
                 .map(|a| a.unwrap_or_default()),
         )
@@ -233,10 +236,11 @@ pub fn in_paren_list<'tokens, 'src: 'tokens, T, U>(
 where
     T: Parser<'tokens, ParserInput<'tokens, 'src>, U, Error<'tokens>> + Clone, // Statement
 {
-    idk.separated_by(just(Token::Comma).then(separator()))
-        .allow_trailing()
-        .collect()
-        .delimited_by(just(Token::Lparen), just(Token::Rparen))
+    extra_delimited(
+        idk.separated_by(just(Token::Comma).then(separator()))
+            .allow_trailing()
+            .collect(),
+    )
 }
 pub fn newline<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,

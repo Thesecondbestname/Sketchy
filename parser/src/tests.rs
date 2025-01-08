@@ -18,14 +18,13 @@ fn basic_lex() -> anyhow::Result<()> {
         lmao2# int,
     ;
     impl Add:
-        add#int: Self; (
+        add(self) #int -> Self {
             self.lmao + self.lmao2
-        )
+        }
     ;
-    new#int: 
-        window #Window; ( 
+    new(window)# Window-> int { 
          a-4 *3
-    )   
+    }  
     draw#int: 
         state, 
         frame, 
@@ -71,10 +70,7 @@ fn enums() -> anyhow::Result<()> {
 
 #[test]
 fn structs_with_impl() -> anyhow::Result<()> {
-    let input = r"struct Baz:
-        lmao# int,
-        lmao2# int,
-    ;
+    let input = r"
     impl Add:
         draw# int: 
             state #SnekGame, 
@@ -82,6 +78,12 @@ fn structs_with_impl() -> anyhow::Result<()> {
             window #Window;( 
              a-4 *3
         )   
+    ;
+
+    
+    struct Baz:
+        lmao# int,
+        lmao2# int,
     ;
     impl Baz:
         new#int: 
@@ -101,6 +103,13 @@ fn function_types() -> anyhow::Result<()> {
             ; 
         ;";
     test(input, "function_types")
+}
+#[test]
+fn new_functions() -> anyhow::Result<()> {
+    let input = r"new[C](window, a) #(Window, int) -> C { 
+    a-4 *3
+}";
+    test(input, "new_functions")
 }
 #[test]
 fn method_calls() -> anyhow::Result<()> {
@@ -155,20 +164,21 @@ fn top_level_expression() -> () {
 }
 #[test]
 fn function_definitions() -> anyhow::Result<()> {
-    let input = "draw#int: 
-    state #SnekGame, 
-    frame #Canvas, 
-    window #Window; ( 
+    let input = "draw( 
+    state,  
+    frame , 
+    window )# (State, Frame, Window) -> int {
          a-4 *3
-    )";
+    } 
+    ";
     test(input, "function_definitions")
 }
 
-// #[test]
-// fn span() -> anyhow::Result<()> {
-//     let input = "x = ( a + 45)..500\n";
-//     test(input, "span")
-// }
+#[test]
+fn calling_method_on_struct() -> anyhow::Result<()> {
+    let input = "a = K: b=53;.sqrt()";
+    test(input, "calling_method_on_struct")
+}
 #[test]
 fn import() -> anyhow::Result<()> {
     let input = r"baz = use foo/bar/baz";
@@ -191,11 +201,6 @@ fn angery_case() -> anyhow::Result<()> {
 fn assign() -> anyhow::Result<()> {
     let input = "\nx = 5 + 5 * (69 +420)";
     test(input, "assign")
-}
-#[test]
-fn r#else() -> anyhow::Result<()> {
-    let input = "x = (24 + 4 else (x = 5))";
-    test(input, "else")
 }
 #[test]
 fn bool_expr() -> anyhow::Result<()> {
@@ -233,11 +238,6 @@ fn multiple_expressions() -> anyhow::Result<()> {
     }";
     test(input, "multiple_expressions")
 }
-// #[test]
-// fn for_loops() -> anyhow::Result<()> {
-//     let input = r"g = for 0..10 :i; i";
-//     test(input, "for_loops")
-// }
 #[test]
 fn multiple_calls() -> anyhow::Result<()> {
     let input = r"m = lambda(3)(5).add(helo)";

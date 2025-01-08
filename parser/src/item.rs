@@ -23,33 +23,28 @@ where
     let declarations = choice((
         import().map(Item::Import).labelled("Import").as_context(),
         assingment(block.clone())
-            .then_ignore(newline())
             .map(Item::Assingment)
             .labelled("Assignment")
             .as_context(),
         function_definition(block.clone())
-            .then_ignore(separator())
             .map(Item::Function)
             .labelled("Function")
             .as_context(),
+        crate::expression::function_definition(block.clone())
+            .map(Item::AlternateSyntaxFunction)
+            .labelled("Function")
+            .as_context(),
         trait_parser()
-            .then_ignore(separator())
             .map(Item::Trait)
             .labelled("Trait")
             .as_context(),
-        enum_parser()
-            .then_ignore(separator())
-            .map(Item::Enum)
-            .labelled("Enum")
-            .as_context(),
+        enum_parser().map(Item::Enum).labelled("Enum").as_context(),
         struct_parser()
-            .then_ignore(separator())
             .map(Item::Struct)
             .labelled("Struct")
             .as_context(),
         impl_parser(block.clone())
             .map_with(|a, ctx| (a, ctx.span()))
-            .then_ignore(separator())
             .map(Item::ImplBlock)
             .labelled("Struct")
             .as_context(),
@@ -136,23 +131,8 @@ pub fn struct_parser<'tokens, 'src: 'tokens>() -> (impl Parser<
                 .collect::<Vec<_>>(),
         )
         .then_ignore(separator())
-        // .then(
-        //     (impl_block)
-        //         .labelled("impl block")
-        //         .as_context()
-        //         .separated_by(separator())
-        //         .collect::<Vec<(Option<String>, Vec<Spanned<FunctionDeclaration>>)>>(),
-        // )
         .then_ignore(just(Token::Semicolon).padded_by(separator()))
         .map_with(|(struct_name, fields), ctx| {
-            // let fns = fns.into_iter().fold(
-            //     Vec::new(),
-            //     |acc: Vec<_>, (name, fns): (Option<String>, Vec<Spanned<FunctionDeclaration>>)| {
-            //         acc.into_iter()
-            //             .chain(vec![name].into_iter().cycle().zip(fns))
-            //             .collect::<Vec<(Option<String>, Spanned<FunctionDeclaration>)>>()
-            //     },
-            // );
             (
                 StructDeclaration {
                     name: struct_name,
@@ -209,7 +189,6 @@ pub fn import<'tokens, 'src: 'tokens>(
                 .separated_by(just(Token::Slash))
                 .collect(),
         )
-        .then_ignore(newline())
         .map_with(|(name, module), ctx| (Import(name, module), ctx.span()));
     import
 }

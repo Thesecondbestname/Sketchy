@@ -2,7 +2,8 @@ use crate::ast::{Expression, Item, Symbols};
 use crate::convenience_types::{Error, ParserInput, Span, Spanned, StrId};
 use crate::error::Diagnostic;
 use crate::lexer::{Lex, LexError};
-use crate::Token;
+use crate::util_parsers::newline;
+use crate::{empty_span, Token};
 use chumsky::prelude::{recursive, Input, IterParser, Parser};
 use thiserror::Error as DeriveError;
 
@@ -16,8 +17,9 @@ pub fn programm<'tokens, 'src: 'tokens>() -> impl Parser<
     use crate::item::item;
     // import, function, statement
     recursive(|block| {
-        let block_element = item(expression(block.clone())).boxed();
-        block_element.map_with(|expr, ctx| (expr, ctx.span()))
+        item(expression(block.clone()))
+            .boxed()
+            .map_with(|expr, ctx| (expr, ctx.span()))
     })
     .validate(|it, ctx, emmit| {
         use crate::error::{ParseError, Pattern};
@@ -31,11 +33,14 @@ pub fn programm<'tokens, 'src: 'tokens>() -> impl Parser<
         }
         it
     })
-    .repeated()
+    .separated_by(newline())
     .collect::<Vec<_>>()
     .map_with(|items, ctx| {
         let x = get_symbols(&items);
-        (Expression::Block(items, x), ctx.span())
+        (
+            Expression::Block(items, Box::new((Expression::Unit, empty_span())), x),
+            ctx.span(),
+        )
     })
 }
 // ----- STATES ----

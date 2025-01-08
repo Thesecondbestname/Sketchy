@@ -333,11 +333,6 @@ fn patterns_to_string(patterns: &[Pattern]) -> String {
         return "nothing".into();
     };
     let mut patterns: HashSet<&Pattern> = patterns.iter().collect::<HashSet<_>>();
-    replace_element(
-        &mut patterns,
-        &Pattern::Token(Token::Assign),
-        &Pattern::Label("Assignment"),
-    );
     replace_subset(
         &mut patterns,
         &[Pattern::Label("Assignment"), Pattern::Label("Function")],

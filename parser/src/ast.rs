@@ -40,6 +40,7 @@ pub struct Generic(pub (Spanned<StrId>, Vec<Spanned<Ident>>));
 // #[cfg_attr(test, visibility::make(pub(crate)))]
 pub enum Item {
     Function(Spanned<FunctionDeclaration>),
+    AlternateSyntaxFunction(Spanned<FunctionDeclaration2>),
     Import(Spanned<Import>),
     Enum(Spanned<EnumDeclaration>),
     Struct(Spanned<StructDeclaration>),
@@ -83,6 +84,7 @@ pub struct FunctionDeclaration {
     pub arguments: Vec<Spanned<(Option<Spanned<Type>>, Spanned<StrId>)>>,
     pub body: Spanned<Expression>,
 }
+#[derive(Debug, Clone)]
 pub struct FunctionDeclaration2 {
     pub name: Spanned<StrId>,
     pub generics: Option<Spanned<Generics>>,
@@ -130,7 +132,7 @@ pub enum Expression {
     Ident(Spanned<Ident>),
     FunctionCall(Box<Spanned<Self>>, Vec<Spanned<Self>>),
     MethodCall(Box<Spanned<Self>>, Spanned<Ident>, Vec<Spanned<Self>>),
-    Block(Vec<Spanned<Item>>, Symbols),
+    Block(Vec<Spanned<Item>>, Box<Spanned<Expression>>, Symbols),
     Value(Value),
     Else(Box<Spanned<Self>>, Box<Spanned<Self>>),
     UnaryBool(Box<Spanned<Self>>),
@@ -281,11 +283,12 @@ crate::impl_display!(Expression, |s: &Expression| {
                 format_join(args, ",").unwrap_or_default()
             )
         }
-        Expression::Block(block, _) => format!(
-            "{}",
+        Expression::Block(block, e, _) => format!(
+            "{} \nreturn {};",
             block
                 .iter()
-                .fold(String::new(), |acc, elem| acc + &format!("{}", elem.0))
+                .fold(String::new(), |acc, elem| acc + &format!("{}", elem.0)),
+            e.0
         ),
         Expression::If(if_) => format!("{if_}"),
         Expression::Comparison(lhs, op, rhs) => format!("({} {op} {})", lhs.0, rhs.0),
@@ -482,6 +485,7 @@ crate::impl_display!(Item, |s: &Item| {
             message
         }
         Item::TopLevelExprError(a) => format!("Erronious Expression {a}"),
+        _ => "".to_owned(),
     }
 });
 crate::impl_display!(Name, |s: &Name| {
@@ -554,7 +558,7 @@ impl Symbols {
 impl Expression {
     pub fn get_idents(&self) -> HashSet<StrId> {
         match self {
-            Self::Block(a, b) => b.combine(),
+            Self::Block(_, _, b) => b.combine(),
             _ => HashSet::new(),
         }
     }
@@ -616,4 +620,51 @@ macro_rules! display_inner {
             }
         }
     };
+}
+pub(crate) fn extract_idents(items: (Vec<Spanned<Item>>, Spanned<Expression>)) -> Expression {
+    use crate::convenience_types::StrId;
+    use std::collections::HashSet;
+    let mut enums = HashSet::new();
+    let mut structs = HashSet::new();
+    let mut vars = HashSet::new();
+    let mut fns = HashSet::new();
+    let mut imports = HashSet::new();
+    let mut traits = HashSet::new();
+    for (item, _) in &items.0 {
+        match item {
+            Item::Function((a, _)) => {
+                fns.insert(a.name.0.clone());
+            }
+            Item::Import(a) => {
+                imports.insert(a.0 .0 .0.clone());
+            }
+            Item::Enum((e, _)) => {
+                enums.insert(e.name.0.clone());
+            }
+            Item::Struct((s, _)) => {
+                structs.insert(s.name.0.clone());
+            }
+            Item::Assingment((v, _)) => {
+                for var in v.0 .0.get_names().unwrap_or_default() {
+                    vars.insert(StrId::from(var));
+                }
+            }
+            Item::Trait(a) => {
+                traits.insert(a.0 .1.clone());
+            }
+            _ => (),
+        }
+    }
+    Expression::Block(
+        items.0,
+        Box::new(items.1),
+        Symbols {
+            fns,
+            traits,
+            structs,
+            enums,
+            imports,
+            vars,
+        },
+    )
 }
