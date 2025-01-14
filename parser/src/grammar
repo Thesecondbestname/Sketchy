@@ -4,12 +4,11 @@
 <Struct> ::= "struct " <TypeName>  <Generics>?  ((":"  <Newline> <Args> ";" ) | "(" <Types> ")")
 <Enum> ::= "enum "  <TypeName>  <Generics>?  ":" <Newline> <Args> ";"
 <Assignment> ::= <Pattern> "=" <Expression>
-<Trait> ::= "trait "  <TypeName>  <Generics>?  ":"  <Newline> (<FunctionDecl>  ",")*  ";"
+<Trait> ::= "trait " <TypeName> <Generics>?  ":" <Newline> (<FunctionDecl>  ",")* ";"
 <Function> ::= <FunctionDecl> "= " <Expression>
 <Import> ::= "use " <Ident>
 <Impl> ::= "impl " <TypeIdent> ":" <Newline> <Functions> ";"
 <TraitImpl> ::= "impl " <TypeIdent> "for" <TypeIdent> ":" <Newline> <Functions> ";"
-
 
 <Arg> ::= <VarIdent> "#" <GenericType>
 <Generics> ::= "[" <GenericsInner> "]"
@@ -25,10 +24,12 @@
     (<VarIdent> | <Lambda>) "(" <Names>? ")" 
     | (<BlockExpression> | <FunctionCall>) "." <VarIdent> "(" <Names>? ")"
  
+<Match> ::= "match" <BlockExpression> ":" (<RefutablePattern> ",")+ ";"
 <BlockExpression> ::= "{" <BlockExpressionInner> "}" 
 
 /*Need refinement*/
-<Expression> ::= ("\"" [A-Z]+ "\"") | [0-9]+ | <Lambda> | <BlockExpression> | <Import> | <FunctionCall>
+<Value> ::= ("\"" [A-Z]+ "\"") | [0-9]+
+<Expression> ::= <Value> | <Lambda> | <BlockExpression> | <Import> | <FunctionCall> | <Match>
 <Type> ::= "char " | "int " | "bool " | "float " | "[" <Type> "]" | <TypeIdent> 
 <GenericType> ::= <Type> <Generics>?
 <Pattern> ::= 
@@ -39,6 +40,14 @@
     | "let " "[" <Pattern> ".." <Pattern> "]"  
     | "_"
 
+<RefutablePattern> ::= 
+    <VarName> 
+    | "let " "(" ( <Pattern> ",")+ ")" 
+    | "let " <TypeIdent> ("(" (<Pattern> ",")+ ")")
+    | "let " <TypeIdent>  ":" <Pattern> ";"
+    | "let " "[" <Pattern> ".." <Pattern> "]"  
+    | "_"
+    | <Value>
 
 /* Recursive types */
 <BlockExpressionInner> ::= 
@@ -58,7 +67,10 @@
 
 
 new[C](window, a) #(Window, int) -> C = { 
-    a-4 *3
+    match a: 
+      Some(_) -> 4,
+      Dude {bruv= x, _} -> {_ = println("69")},
+      _ -> 1,
 }
 new = (window, a) { 
     a-4 *3

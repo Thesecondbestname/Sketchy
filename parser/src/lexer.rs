@@ -69,6 +69,8 @@ pub enum Token {
     Trait,
     #[token("then")]
     Then,
+    #[token("let")]
+    Let,
     #[token("Self")]
     Self_,
     #[token("fn")]
@@ -267,5 +269,6 @@ impl_display!(Token, |s: &Token| {
         Token::Trait => "trait".to_owned(),
         Token::TypeIdent(id) => id.to_string(),
         Token::Arrow => "->".to_owned(),
+        Token::Let => "let".to_owned(),
     }
 });

@@ -33,21 +33,21 @@ fn basic_lex() -> anyhow::Result<()> {
     )   
     // add(x, y) = 
     //     match x: 
-    //         4 => "four",
-    //         _ => x + y
+    //         4 -> "four",
+    //         _ -> x + y
     //      ;
 
     add#int: x#int, y#int; (
-        match x if
-            4 then "four",
-            _ then x + y
+        match x: 
+            4 -> "four",
+            _ -> x + y;
     )
     // Some kinda idk  
     _ = add (4,5).sqrt
     
-    _ = match x if 
-      4 then print ("oooops!"),
-      _ then print ("phew")
+    _ = match x:
+      4 -> print ("oooops!"),
+      _ -> print ("phew");
     "#;
     test(lex, "basic_lex")
 }
@@ -72,12 +72,10 @@ fn enums() -> anyhow::Result<()> {
 fn structs_with_impl() -> anyhow::Result<()> {
     let input = r"
     impl Add:
-        draw# int: 
-            state #SnekGame, 
-            frame #Canvas, 
-            window #Window;( 
+        draw(state ,frame ,window )#
+            (SnekGame, Canvas, Window)-> int { 
              a-4 *3
-        )   
+        }   
     ;
 
     
@@ -86,10 +84,9 @@ fn structs_with_impl() -> anyhow::Result<()> {
         lmao2# int,
     ;
     impl Baz:
-        new#int: 
-            window #Window; ( 
+        new(window) #Window -> int { 
              a-4 *3
-        )   
+        }   
     ;
     ";
     test(input, "structs_with_impl")
@@ -97,10 +94,8 @@ fn structs_with_impl() -> anyhow::Result<()> {
 #[test]
 fn function_types() -> anyhow::Result<()> {
     let input = "trait Add: 
-            add#int: 
-                fn#int: a#int, b#int;, 
-                int
-            ; 
+            add# ((int, int) -> int, int) -> int 
+                             
         ;";
     test(input, "function_types")
 }
@@ -113,7 +108,7 @@ fn new_functions() -> anyhow::Result<()> {
 }
 #[test]
 fn method_calls() -> anyhow::Result<()> {
-    let input = "x = 500.sqrt";
+    let input = "x = 500.sqrt()";
     test(input, "method_calls")
 }
 #[test]
@@ -128,7 +123,7 @@ fn traits() -> anyhow::Result<()> {
 }
 #[test]
 fn array_destructuring() -> anyhow::Result<()> {
-    let input = "x = {[a,b,c..d] = y}";
+    let input = "x = {let [a,b,c..d] = y}";
     test(input, "array_destructuring")
 }
 #[test]
@@ -143,7 +138,7 @@ fn struct_construction() -> anyhow::Result<()> {
 }
 #[test]
 fn struct_destructuring() -> anyhow::Result<()> {
-    let input = "Dude: name#(name, _), mood#_ ; = x";
+    let input = "let Dude: name#(name, _), mood#_ ; = x";
     test(input, "struct_destructuring")
 }
 #[test]
@@ -153,7 +148,7 @@ fn enum_construction() -> anyhow::Result<()> {
 }
 #[test]
 fn enum_destructuring() -> anyhow::Result<()> {
-    let input = "Some((name, _)) = y";
+    let input = "let Some((name, _)) = y";
     test(input, "enum_destructuring")
 }
 #[test]
@@ -192,7 +187,7 @@ fn separator() -> anyhow::Result<()> {
 }
 #[test]
 fn angery_case() -> anyhow::Result<()> {
-    let input = r"x = 50.sqrt
+    let input = r"x = 50.sqrt()
         y = ksjdfo
         _ = print(works)";
     test(input, "angery_case")
@@ -225,9 +220,9 @@ fn unary() -> anyhow::Result<()> {
 #[test]
 fn r#match() -> anyhow::Result<()> {
     let input = "
-    x = match Some(x) if 
-            Some(e) then e, 
-            None then panic()";
+    x = match Some(x):
+            Some(e) -> e, 
+            None -> panic();";
     test(input, "match")
 }
 #[test]
@@ -237,6 +232,11 @@ fn multiple_expressions() -> anyhow::Result<()> {
         x = 32
     }";
     test(input, "multiple_expressions")
+}
+#[test]
+fn precedence() -> anyhow::Result<()> {
+    let input = "_ = {{{x()().q().q}.i().i}.i()}()()";
+    test(input, "precedence")
 }
 #[test]
 fn multiple_calls() -> anyhow::Result<()> {
@@ -251,6 +251,15 @@ fn call_multiple_args() -> anyhow::Result<()> {
 #[test]
 fn tuples() -> anyhow::Result<()> {
     let input = r#"m = ("foo", 5, false)"#;
+    test(input, "tuples")
+}
+#[test]
+fn alternate_tuples() -> anyhow::Result<()> {
+    let input = r#"struct Pair[A,B]:
+        first# A,
+        second# B
+    ;
+    a = Pair{first:1, second: 4}"#;
     test(input, "tuples")
 }
 #[test]

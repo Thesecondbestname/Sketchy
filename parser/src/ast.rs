@@ -14,7 +14,7 @@ pub struct Programm(Vec<Spanned<Item>>, Symbols);
 pub struct Impl {
     pub(crate) impl_for: Spanned<Ident>,
     pub(crate) impl_what: Option<Spanned<Ident>>,
-    pub(crate) fns: Vec<Spanned<FunctionDeclaration>>,
+    pub(crate) fns: Vec<Spanned<FunctionDeclaration2>>,
 }
 #[derive(Debug, Clone)]
 pub enum Pattern {
@@ -39,7 +39,6 @@ pub struct Generic(pub (Spanned<StrId>, Vec<Spanned<Ident>>));
 #[derive(Debug, Clone)]
 // #[cfg_attr(test, visibility::make(pub(crate)))]
 pub enum Item {
-    Function(Spanned<FunctionDeclaration>),
     AlternateSyntaxFunction(Spanned<FunctionDeclaration2>),
     Import(Spanned<Import>),
     Enum(Spanned<EnumDeclaration>),
@@ -76,20 +75,13 @@ pub struct TraitFns(
 );
 #[derive(Debug, Clone)]
 pub struct VariableDeclaration(pub Spanned<Pattern>, pub Spanned<Expression>);
-#[derive(Debug, Clone)]
-/// Here is where a function is defined
-pub struct FunctionDeclaration {
-    pub name: Spanned<StrId>,
-    pub return_type: Spanned<Type>,
-    pub arguments: Vec<Spanned<(Option<Spanned<Type>>, Spanned<StrId>)>>,
-    pub body: Spanned<Expression>,
-}
+
 #[derive(Debug, Clone)]
 pub struct FunctionDeclaration2 {
     pub name: Spanned<StrId>,
     pub generics: Option<Spanned<Generics>>,
     pub arguments: Vec<Spanned<StrId>>,
-    pub type_: (Vec<Spanned<Type>>, Spanned<Type>),
+    pub type_: Spanned<Type>,
     pub body: Spanned<Expression>,
 }
 
@@ -109,8 +101,9 @@ pub struct EnumVariantDeclaration {
 /// The one where the struct is firstly defined
 pub struct StructDeclaration {
     pub name: Spanned<StrId>,
+    pub generics: Option<Spanned<Generics>>,
     pub fields: Vec<Spanned<StructField>>,
-    pub impl_blocks: Vec<(Option<StrId>, Spanned<FunctionDeclaration>)>,
+    pub impl_blocks: Vec<(Option<StrId>, Spanned<FunctionDeclaration2>)>,
 }
 #[derive(Debug, Clone)]
 pub struct StructField {
@@ -132,6 +125,7 @@ pub enum Expression {
     Ident(Spanned<Ident>),
     FunctionCall(Box<Spanned<Self>>, Vec<Spanned<Self>>),
     MethodCall(Box<Spanned<Self>>, Spanned<Ident>, Vec<Spanned<Self>>),
+    FieldAccess(Box<Spanned<Self>>, Spanned<Ident>),
     Block(Vec<Spanned<Item>>, Box<Spanned<Expression>>, Symbols),
     Value(Value),
     Else(Box<Spanned<Self>>, Box<Spanned<Self>>),
@@ -206,10 +200,7 @@ pub enum Type {
     String,
     Array(Box<Spanned<Type>>, i64),
     Tuple(Vec<Spanned<Type>>),
-    FunctionType(
-        Spanned<Vec<(Spanned<StrId>, Spanned<Self>)>>,
-        Option<Box<Spanned<Self>>>,
-    ),
+    FunctionType(Vec<Spanned<Type>>, Spanned<Box<Type>>),
     Path(Spanned<Ident>),
 }
 #[derive(Debug, Clone)]
@@ -295,7 +286,6 @@ crate::impl_display!(Expression, |s: &Expression| {
         Expression::Binary(a, op, b) => format!("({} {op} {})", a.0, b.0),
         Expression::Else(c, e) => format!("{} else ({})", c.0, e.0),
         Expression::UnaryBool(e) => format!("!{}", e.0),
-        // Expression::UnaryMath(e) => format!("-{}", e.0),
         Expression::Unit => "Dis weird aah heal".to_owned(),
         Expression::Match { condition, arms } => format!(
             "match {} {{{}}}",
@@ -305,6 +295,7 @@ crate::impl_display!(Expression, |s: &Expression| {
         ),
         Expression::TopLvlExpr(_) => "Illegal toplvl expresssion".to_string(),
         Expression::For(_for) => format!("{_for}"),
+        Expression::FieldAccess(e, (f, _)) => format!("{}.{f}", e.0),
     }
 });
 
@@ -336,29 +327,13 @@ crate::impl_display!(Type, |s: &Type| {
         Type::Array(ty, size) => format!("[{};{size}]", ty.0),
         Type::Tuple(t) => format!("({})", format_join(t, ",").unwrap_or_default()),
         Type::Path(p) => format!("{}", p.0),
-        Type::FunctionType(b, c) => c.as_ref().map_or_else(
-            || {
-                String::new()
-                    + "fn ("
-                    + &b.0
-                        .iter()
-                        .map(|a| format!("{}: {}", a.0 .0, a.1 .0))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                    + ")"
-            },
-            |t| {
-                String::new()
-                    + "fn ("
-                    + &b.0
-                        .iter()
-                        .map(|a| format!("{}: {}", a.0 .0, a.1 .0))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                    + ")"
-                    + &t.0.to_string()
-            },
-        ),
+        Type::FunctionType(b, c) => {
+            format!(
+                "fn({}) -> {}",
+                format_join(&b, ",").unwrap_or_default(),
+                c.0
+            )
+        }
     }
 });
 crate::impl_display!(StructDeclaration, |s: &StructDeclaration| {
@@ -382,36 +357,16 @@ crate::impl_display!(StructDeclaration, |s: &StructDeclaration| {
             ))
     )
 });
-crate::impl_display!(FunctionDeclaration, |s: &FunctionDeclaration| {
+crate::impl_display!(FunctionDeclaration2, |s: &FunctionDeclaration2| {
     format!(
-        "fn {}({}) -> {} ({})",
+        "fn {}<{}>({}) -> {} {{{}}}",
         s.name.0,
-        {
-            if let Some((first, x)) = s.arguments.split_first() {
-                x.iter().fold(
-                    format!(
-                        "{}: {}",
-                        first.0 .1 .0,
-                        first
-                            .0
-                             .0
-                            .as_ref()
-                            .map(|a| a.0.to_string())
-                            .unwrap_or_default()
-                    ),
-                    |acc, a| {
-                        format!(
-                            "{acc}, {}: {}",
-                            a.0 .1 .0.clone(),
-                            a.0 .0.as_ref().map(|a| a.0.to_string()).unwrap_or_default()
-                        )
-                    },
-                )
-            } else {
-                String::new()
-            }
-        },
-        s.return_type.0,
+        s.generics
+            .as_ref()
+            .map(|a| a.0.to_string())
+            .unwrap_or_default(),
+        format_join(&s.arguments, ",").unwrap_or_default(),
+        s.type_.0,
         s.body.0
     )
 });
@@ -429,7 +384,6 @@ crate::impl_display!(Generics, |s: &Generics| {
 });
 crate::impl_display!(Item, |s: &Item| {
     match s {
-        Item::Function(r#fn) => r#fn.0.to_string(),
         Item::Import((imp, _)) => {
             format!(
                 "use {} as {};",
@@ -632,7 +586,7 @@ pub(crate) fn extract_idents(items: (Vec<Spanned<Item>>, Spanned<Expression>)) -
     let mut traits = HashSet::new();
     for (item, _) in &items.0 {
         match item {
-            Item::Function((a, _)) => {
+            Item::AlternateSyntaxFunction((a, _)) => {
                 fns.insert(a.name.0.clone());
             }
             Item::Import(a) => {

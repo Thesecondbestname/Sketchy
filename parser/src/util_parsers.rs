@@ -156,54 +156,61 @@ pub fn separator<'tokens, 'src: 'tokens>() -> impl Parser<
 pub fn type_parser<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
-    Type,                       // Output
+    Spanned<Type>,              // Output
     Error<'tokens>,             // Error Type
 > + Clone {
     let int = select! { Token::Integer(v) => v }.labelled("Whole AAh integer");
     recursive(|r#type| {
-        let path = type_ident_parser_fallback().map(|a| Type::Path(a));
-        let primitives = select! {Token::Type(x) => x,}.labelled("primitive type");
+        let path = type_ident_parser_fallback()
+            .map(|a| Type::Path(a))
+            .map_with(|b, ctx| (b, ctx.span()));
+        let primitives = select! {Token::Type(x) => x,}
+            .labelled("primitive type")
+            .map_with(|b, ctx| (b, ctx.span()));
         let tuple = r#type
             .clone()
-            .map_with(|b, ctx| (b, ctx.span()))
             .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
             .delimited_by(just(Token::Lparen), just(Token::Rparen))
             .map(Type::Tuple)
+            .map_with(|b, ctx| (b, ctx.span()))
             .labelled("Tuple");
         let array = r#type
             .clone()
-            .map_with(|a, b| (a, b.span()))
             .clone()
             .then_ignore(just(Token::Comma))
             .then(int)
             .delimited_by(just(Token::Lbracket), just(Token::Rbracket))
             .map(|(r#type, len)| Type::Array(Box::new(r#type), len))
+            .map_with(|b, ctx| (b, ctx.span()))
             .labelled("Array");
-        let function_type = just(Token::Fn)
-            .ignore_then(
-                just(Token::Hashtag)
-                    .ignore_then(r#type.clone().map_with(|a, ctx| Box::new((a, ctx.span()))))
-                    .or_not(),
-            )
-            .then(
-                name_parser()
-                    .then_ignore(just(Token::Hashtag))
-                    .then(r#type.clone().map_with(|a, ctx| (a, ctx.span())))
-                    .separated_by(just(Token::Comma).then(separator()))
-                    .collect::<Vec<_>>()
-                    .map_with(|a, ctx| (a, ctx.span()))
-                    .delimited_by(just(Token::Colon), just(Token::Semicolon)),
-            )
-            .map(|(ret, args)| Type::FunctionType(args, ret))
-            .labelled("function type");
+
+        // (<Type> | "(" <Types> ")" ) "->" <Type>
+        let function_type = in_paren_list(r#type.clone())
+            .then_ignore(just(Token::Arrow))
+            .then(r#type.clone().labelled("function return type"))
+            .map(|a| ast::Type::FunctionType(a.0, (Box::new(a.1 .0), a.1 .1)))
+            .map_with(|a, c| (a, c.span()))
+            .labelled("function_type");
+
+        let alt = r#type
+            .clone()
+            .then_ignore(just(Token::Arrow))
+            .then(r#type.clone().labelled("function return type"))
+            .delimited_by(just(Token::Lparen), just(Token::Rparen))
+            .map(|a| ast::Type::FunctionType(vec![a.0], (Box::new(a.1 .0), a.1 .1)))
+            .map_with(|a, c| (a, c.span()))
+            .labelled("function_type");
+
         choice((
-            tuple,
-            primitives,
-            array,
+            just(Token::Self_)
+                .to(Type::Self_)
+                .map_with(|b, ctx| (b, ctx.span())),
             path,
-            function_type,
-            just(Token::Self_).to(Type::Self_),
+            array,
+            primitives,
+            function_type.or(alt),
+            tuple,
         ))
     })
     .labelled("Type")
@@ -256,84 +263,65 @@ pub fn newline<'tokens, 'src: 'tokens>() -> impl Parser<
     ))
     .labelled("Separator")
 }
-pub fn irrefutable_pattern<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>, // Input
-    Spanned<Pattern>,           // Output
-    Error<'tokens>,             // Error Type
-> + Clone {
-    let pattern = recursive(|pat| pattern(pat).map_with(|pat, ctx| (pat, ctx.span())));
-    pattern.labelled("irrefutable pattern")
-}
 pub fn refutable_pattern<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
     Spanned<Pattern>,           // Output
     Error<'tokens>,             // Error Type
 > + Clone {
-    let pattern = recursive(|pat| {
-        pattern(pat)
-            .or(value().map_with(|a, b| (a, b.span())).map(Pattern::Value))
-            .map_with(|pat, ctx| (pat, ctx.span()))
-    });
-    pattern.labelled("Pattern")
+    pattern()
+        .or(value().map_with(|a, b| (Pattern::Value((a, b.span())), b.span())))
+        .labelled("Pattern")
 }
-pub fn pattern<'tokens, 'src: 'tokens, T>(
-    pattern: T,
-) -> impl Parser<
+pub fn pattern<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>, // Input
-    Pattern,                    // Output
+    Spanned<Pattern>,           // Output
     Error<'tokens>,             // Error Type
-> + Clone
-where
-    T: Parser<
-            'tokens,
-            ParserInput<'tokens, 'src>, // Input
-            Spanned<Pattern>,           // Output
-            Error<'tokens>,             // Error Type
-        > + Clone,
-{
-    let nuthing = select! { Token::Ident(ident) if ident.as_str() == "_" =>
-        Name::Underscore
-    };
-    let name_pattern = choice((nuthing, name_parser().map(|a| Name::Name(a))));
-    let tuple_destructure = pattern
-        .clone()
-        .separated_by(just(Token::Comma))
-        .collect()
-        .delimited_by(just(Token::Lparen), just(Token::Rparen));
-    // DO NOT use the fallback type parser here. It consumes to eagerly
-    let enum_destructure = type_ident_parser().then(tuple_destructure.clone().or_not());
-    let struct_destructure = type_ident_parser_fallback().then(
-        name_pattern
+> + Clone {
+    recursive(|pat| {
+        let nuthing = select! { Token::Ident(ident) if ident.as_str() == "_" =>
+            Name::Underscore
+        };
+        let name_pattern = choice((nuthing, name_parser().map(|a| Name::Name(a))));
+        let tuple_destructure = pat
             .clone()
-            .map_with(|pat, ctx| (pat, ctx.span()))
-            .then_ignore(just(Token::Hashtag))
-            .then(pattern.clone())
             .separated_by(just(Token::Comma))
             .collect()
-            .delimited_by(just(Token::Colon), just(Token::Semicolon)),
-    );
-    let array_destructure = pattern
-        .separated_by(just(Token::Comma))
-        .collect::<Vec<_>>()
-        .then_ignore(just(Token::DoubleDot))
-        .then(name_pattern.clone())
-        .delimited_by(just(Token::Lbucket), just(Token::Rbucket));
-    choice((
-        struct_destructure
-            .map(|(name, b)| Pattern::Struct(name, b))
-            .labelled("Struct destructure"),
-        enum_destructure
-            .map(|(name, pat)| Pattern::Enum(name, pat.unwrap_or(vec![])))
-            .labelled("Enum destructure"),
-        tuple_destructure
-            .map(Pattern::Tuple)
-            .labelled("Tuple destructure"),
-        array_destructure
-            .map(|(pats, end)| Pattern::Array(pats, end))
-            .labelled("Array destructure"),
-        name_pattern.map(Pattern::Name).labelled("name"),
-    ))
+            .delimited_by(just(Token::Lparen), just(Token::Rparen));
+        // DO NOT use the fallback type parser here. It consumes too eagerly
+        let enum_destructure = type_ident_parser().then(tuple_destructure.clone().or_not());
+        let struct_destructure = type_ident_parser_fallback().then(
+            name_pattern
+                .clone()
+                .map_with(|pat, ctx| (pat, ctx.span()))
+                .then_ignore(just(Token::Hashtag))
+                .then(pat.clone())
+                .separated_by(just(Token::Comma))
+                .collect()
+                .delimited_by(just(Token::Colon), just(Token::Semicolon)),
+        );
+        let array_destructure = pat
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .then_ignore(just(Token::DoubleDot))
+            .then(name_pattern.clone())
+            .delimited_by(just(Token::Lbucket), just(Token::Rbucket));
+        choice((
+            struct_destructure
+                .map(|(name, b)| Pattern::Struct(name, b))
+                .labelled("Struct destructure"),
+            enum_destructure
+                .map(|(name, pat)| Pattern::Enum(name, pat.unwrap_or(vec![])))
+                .labelled("Enum destructure"),
+            tuple_destructure
+                .map(Pattern::Tuple)
+                .labelled("Tuple destructure"),
+            array_destructure
+                .map(|(pats, end)| Pattern::Array(pats, end))
+                .labelled("Array destructure"),
+            name_pattern.map(Pattern::Name).labelled("name"),
+        ))
+        .map_with(|a, c| (a, c.span()))
+    })
 }
