@@ -1,5 +1,5 @@
 use crate::ast::{
-    EnumDeclaration, EnumVariantDeclaration, Expression, FunctionDeclaration2, Impl, Import, Item,
+    EnumDeclaration, EnumVariantDeclaration, Expression, FunctionDeclaration, Impl, Import, Item,
     Name, StructDeclaration, StructField, Trait, TraitFns, Type, VariableDeclaration,
 };
 use crate::convenience_parsers::{name_parser, separator, type_parser};
@@ -27,7 +27,7 @@ where
             .labelled("Assignment")
             .as_context(),
         crate::expression::function_definition(block.clone())
-            .map(Item::AlternateSyntaxFunction)
+            .map(Item::Function)
             .labelled("Function")
             .as_context(),
         trait_parser()
@@ -211,7 +211,7 @@ where
                 .separated_by(newline())
                 .allow_leading()
                 .allow_trailing()
-                .collect::<Vec<Spanned<FunctionDeclaration2>>>(),
+                .collect::<Vec<Spanned<FunctionDeclaration>>>(),
         )
         .then_ignore(just(Token::Semicolon))
         .map(|(a, fns)| Impl {

@@ -137,6 +137,8 @@ impl Reason {
             (Reason::Custom(_this), Reason::Custom(_other)) => todo!(),
             (this @ Reason::Custom(_), _) => this,
             (_, other @ Reason::Custom(_)) => other,
+            (this @ Reason::ExpectedFoundHelp { .. }, _) => this,
+            (_, other @ Reason::ExpectedFoundHelp { .. }) => other,
             a => panic!("[INTERNAL ERROR] had to fuse errors {a:?}"),
         }
     }

@@ -332,7 +332,7 @@ pub fn function_definition<'tokens, 'src: 'tokens, T>(
 ) -> (impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>,         // Input
-    Spanned<ast::FunctionDeclaration2>, // Output
+    Spanned<ast::FunctionDeclaration>, // Output
     Error<'tokens>,                     // Error Type
 > + Clone)
 where
@@ -357,7 +357,7 @@ where
         .then(block)
         .map_with(|((((name, generics), arguments), fn_type), body), c| {
             (
-                ast::FunctionDeclaration2 {
+                ast::FunctionDeclaration {
                     name,
                     generics,
                     arguments,

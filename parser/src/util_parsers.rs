@@ -186,6 +186,9 @@ pub fn type_parser<'tokens, 'src: 'tokens>() -> impl Parser<
             .labelled("Array");
 
         // (<Type> | "(" <Types> ")" ) "->" <Type>
+        // Type ::
+        // | Boolean
+        // | Fn (Type, Type)
         let function_type = in_paren_list(r#type.clone())
             .then_ignore(just(Token::Arrow))
             .then(r#type.clone().labelled("function return type"))

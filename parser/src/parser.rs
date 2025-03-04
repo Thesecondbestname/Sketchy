@@ -294,7 +294,7 @@ fn get_symbols(items: &Vec<(Item, Span)>) -> Symbols {
     let mut traits = HashSet::new();
     for (item, _) in items {
         match item {
-            Item::AlternateSyntaxFunction((a, _)) => {
+            Item::Function((a, _)) => {
                 fns.insert(a.name.0.clone());
             }
             Item::Import(a) => {

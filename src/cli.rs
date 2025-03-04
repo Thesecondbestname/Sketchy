@@ -133,7 +133,7 @@ fn search_directory(path: &PathBuf, file_name: &str) -> Result<std::path::PathBu
         let file_path = entry.path();
         debug!("{:?}", &file_path);
         if file_path.is_file() && file_path.file_name().is_some_and(|s| s == PROJECT_FILE) {
-            is_init = true
+            is_init = true;
         } else if file_path.is_file() && file_path.file_name().is_some_and(|s| s == file_name) {
             abort!("Did you mean {}? Consider moving it to a 'src/' directory or initializing a new project with 'sketchy new'", file_path.to_string_lossy());
         }

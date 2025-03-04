@@ -11,6 +11,7 @@ fn basic_lex() -> anyhow::Result<()> {
         baz
     ;
     trait[A,B#Add,C] Add: 
+        add(int -> A, C)
         add(fn#A(B#int), C)
     ;    
     struct Baz:
@@ -18,7 +19,7 @@ fn basic_lex() -> anyhow::Result<()> {
         lmao2# int,
     ;
     impl Add:
-        add(self) #int -> Self {
+        add(self) #(int -> Self) {
             self.lmao + self.lmao2
         }
     ;
@@ -39,8 +40,9 @@ fn basic_lex() -> anyhow::Result<()> {
 
     add#int: x#int, y#int; (
         match x: 
-            4 -> "four",
-            _ -> x + y;
+          4 -> "four",
+          _ -> x + y
+        ;
     )
     // Some kinda idk  
     _ = add (4,5).sqrt
@@ -84,7 +86,7 @@ fn structs_with_impl() -> anyhow::Result<()> {
         lmao2# int,
     ;
     impl Baz:
-        new(window) #Window -> int { 
+        new(window) #(Window -> int) { 
              a-4 *3
         }   
     ;

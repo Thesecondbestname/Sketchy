@@ -8,13 +8,10 @@ use crate::interner::StrId;
 pub struct Ident(pub Vec<Spanned<StrId>>);
 
 #[derive(Debug, Clone)]
-pub struct Programm(Vec<Spanned<Item>>, Symbols);
-
-#[derive(Debug, Clone)]
 pub struct Impl {
     pub(crate) impl_for: Spanned<Ident>,
     pub(crate) impl_what: Option<Spanned<Ident>>,
-    pub(crate) fns: Vec<Spanned<FunctionDeclaration2>>,
+    pub(crate) fns: Vec<Spanned<FunctionDeclaration>>,
 }
 #[derive(Debug, Clone)]
 pub enum Pattern {
@@ -39,7 +36,7 @@ pub struct Generic(pub (Spanned<StrId>, Vec<Spanned<Ident>>));
 #[derive(Debug, Clone)]
 // #[cfg_attr(test, visibility::make(pub(crate)))]
 pub enum Item {
-    AlternateSyntaxFunction(Spanned<FunctionDeclaration2>),
+    Function(Spanned<FunctionDeclaration>),
     Import(Spanned<Import>),
     Enum(Spanned<EnumDeclaration>),
     Struct(Spanned<StructDeclaration>),
@@ -77,7 +74,7 @@ pub struct TraitFns(
 pub struct VariableDeclaration(pub Spanned<Pattern>, pub Spanned<Expression>);
 
 #[derive(Debug, Clone)]
-pub struct FunctionDeclaration2 {
+pub struct FunctionDeclaration {
     pub name: Spanned<StrId>,
     pub generics: Option<Spanned<Generics>>,
     pub arguments: Vec<Spanned<StrId>>,
@@ -103,7 +100,7 @@ pub struct StructDeclaration {
     pub name: Spanned<StrId>,
     pub generics: Option<Spanned<Generics>>,
     pub fields: Vec<Spanned<StructField>>,
-    pub impl_blocks: Vec<(Option<StrId>, Spanned<FunctionDeclaration2>)>,
+    pub impl_blocks: Vec<(Option<StrId>, Spanned<FunctionDeclaration>)>,
 }
 #[derive(Debug, Clone)]
 pub struct StructField {
@@ -116,7 +113,6 @@ pub struct StructField {
 pub enum Expression {
     ParserError,
     TopLvlExpr(Box<Spanned<Expression>>),
-    If(Box<If>),
     For(Box<For>),
     Match {
         condition: Box<Spanned<Expression>>,
@@ -128,7 +124,6 @@ pub enum Expression {
     FieldAccess(Box<Spanned<Self>>, Spanned<Ident>),
     Block(Vec<Spanned<Item>>, Box<Spanned<Expression>>, Symbols),
     Value(Value),
-    Else(Box<Spanned<Self>>, Box<Spanned<Self>>),
     UnaryBool(Box<Spanned<Self>>),
     MathOp(Box<Spanned<Self>>, MathOp, Box<Spanned<Self>>),
     Comparison(Box<Spanned<Self>>, ComparisonOp, Box<Spanned<Self>>),
@@ -136,11 +131,6 @@ pub enum Expression {
     Unit,
 }
 
-#[derive(Debug, Clone)]
-pub struct If {
-    pub(crate) condition: Spanned<Expression>,
-    pub(crate) code_block: Spanned<Expression>,
-}
 #[derive(Debug, Clone)]
 pub struct For {
     pub(crate) name: Spanned<Pattern>,
@@ -155,10 +145,6 @@ pub enum Value {
     Number(Number),
     Tuple(Vec<Spanned<Expression>>),
     Bool(bool),
-    Span(
-        Option<Box<Spanned<Expression>>>,
-        Option<Box<Spanned<Expression>>>,
-    ),
     Struct {
         name: Spanned<Ident>,
         fields: Spanned<Vec<(Spanned<StrId>, Spanned<Expression>)>>,
@@ -208,6 +194,7 @@ pub enum Number {
     Int(i64),
     Float(f64),
 }
+
 crate::impl_display!(BinaryOp, |s: &BinaryOp| match s {
     BinaryOp::And => "&&",
     BinaryOp::Or => "||",
@@ -226,11 +213,6 @@ crate::impl_display!(Value, |s: &Value| match s {
     Value::Number(Number::Float(float)) => format!("{float}"),
     Value::Tuple(vals) => format!("({})", format_join(vals, ",").unwrap_or_default()),
     Value::Bool(bool) => format!("{bool}"),
-    Value::Span(start, end) => format!(
-        "{}..{}",
-        start.as_ref().map(|x| x.0.to_string()).unwrap_or_default(),
-        end.as_ref().map(|x| x.0.to_string()).unwrap_or_default()
-    ),
     Value::Struct { name, fields } => format!(
         "{} {{{}}}",
         name.0,
@@ -281,10 +263,8 @@ crate::impl_display!(Expression, |s: &Expression| {
                 .fold(String::new(), |acc, elem| acc + &format!("{}", elem.0)),
             e.0
         ),
-        Expression::If(if_) => format!("{if_}"),
         Expression::Comparison(lhs, op, rhs) => format!("({} {op} {})", lhs.0, rhs.0),
         Expression::Binary(a, op, b) => format!("({} {op} {})", a.0, b.0),
-        Expression::Else(c, e) => format!("{} else ({})", c.0, e.0),
         Expression::UnaryBool(e) => format!("!{}", e.0),
         Expression::Unit => "Dis weird aah heal".to_owned(),
         Expression::Match { condition, arms } => format!(
@@ -299,13 +279,6 @@ crate::impl_display!(Expression, |s: &Expression| {
     }
 });
 
-crate::impl_display!(If, |s: &If| {
-    let If {
-        condition,
-        code_block: blocc,
-    } = s;
-    format!("if {} {{{}}}", condition.0, blocc.0)
-});
 crate::impl_display!(For, |s: &For| {
     let For {
         code_block,
@@ -357,7 +330,7 @@ crate::impl_display!(StructDeclaration, |s: &StructDeclaration| {
             ))
     )
 });
-crate::impl_display!(FunctionDeclaration2, |s: &FunctionDeclaration2| {
+crate::impl_display!(FunctionDeclaration, |s: &FunctionDeclaration| {
     format!(
         "fn {}<{}>({}) -> {} {{{}}}",
         s.name.0,
@@ -368,13 +341,6 @@ crate::impl_display!(FunctionDeclaration2, |s: &FunctionDeclaration2| {
         format_join(&s.arguments, ",").unwrap_or_default(),
         s.type_.0,
         s.body.0
-    )
-});
-crate::impl_display!(Programm, |s: &Programm| {
-    format!(
-        "{}",
-        s.0.iter()
-            .fold(String::new(), |acc, elem| acc + &format!("{}", elem.0))
     )
 });
 crate::impl_display!(Generics, |s: &Generics| {
@@ -586,7 +552,7 @@ pub(crate) fn extract_idents(items: (Vec<Spanned<Item>>, Spanned<Expression>)) -
     let mut traits = HashSet::new();
     for (item, _) in &items.0 {
         match item {
-            Item::AlternateSyntaxFunction((a, _)) => {
+            Item::Function((a, _)) => {
                 fns.insert(a.name.0.clone());
             }
             Item::Import(a) => {
